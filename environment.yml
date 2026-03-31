@@ -1,0 +1,4 @@
+name: elec378
+channels:
+  - defaults
+prefix: /home/rr/miniconda3/envs/elec378
