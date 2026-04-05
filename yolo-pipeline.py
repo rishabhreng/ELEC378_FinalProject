@@ -61,7 +61,7 @@ def link_or_copy(src: Path, dst: Path) -> None:
     dst.parent.mkdir(parents=True, exist_ok=True)
     if dst.exists() or dst.is_symlink():
         dst.unlink()
-        dst.symlink_to(src.resolve())
+    dst.symlink_to(src.resolve())
 
 
 # Method to prepare dataset for YOLO classification
@@ -76,7 +76,7 @@ def prepare_yolo_dataset(
         stratify=df["TARGET"],
         random_state=random_state,
     )
-    shutil.rmtree(PREPARED_DATA_DIR) # clear out any existing prepared data
+    # shutil.rmtree(PREPARED_DATA_DIR) # clear out any existing prepared data
     train_dir = PREPARED_DATA_DIR / "train"
     val_dir = PREPARED_DATA_DIR / "val"
     class_names = sorted(df["TARGET"].unique()) # get the unique class names from the TARGET column
@@ -165,18 +165,18 @@ def generate_submission(weights_path: Path, output_path: Path, batch: int, imgsz
 
 def main() -> None:
     SHOW_SAMPLE = False # display sample image from dataset (debugging)
-    TRAIN_MODEL = True # train a model or use an existing one
+    TRAIN_MODEL = False # train a model or use an existing one
     USE_PRETRAINED = False # never switch to true for the sake of the assignment
-    MODEL_NAME = "yolo11n-cls.yaml" # classifier -cls version of yolo nano
-    EPOCHS = 2 # increase this...
+    MODEL_NAME = "yolo11m-cls.yaml" # classifier -cls version of yolo nano
+    EPOCHS = 100 # increase this...
     IMGSZ = 224 # most yolo models need square images
-    BATCH = 32 # increase batch size for faster convergence if you have a gpu
+    BATCH = 20 # increase batch size for faster convergence if you have a gpu
     VAL_SIZE = 0.2 # 20% is a good rule of thumb for validation ratio
     SEED = RANDOM_STATE # 42 is the answer to the ultimate question of life, the universe, and everything.
-    DEVICE = None # set to "cuda" to use gpu
+    DEVICE = 'cuda' # set to "cuda" to use gpu
     WORKERS = 8 # assume 8 smt cores
     PROJECT_DIR = RUNS_DIR # where the training runs are stored
-    RUN_NAME = "yolo11_butterflies"
+    RUN_NAME = "yolo13_butterflies"
     OUTPUT_PATH = FILE_PATH / "submission.csv"
     SAMPLE_INDEX = 0
 
@@ -201,7 +201,7 @@ def main() -> None:
         )
 
     generate_submission(
-        weights_path=weights_path,
+        weights_path='/home/rr/rice/spring2026/elec378/ELEC378_FinalProject/runs/yolo13_butterflies2/weights/best.pt',
         output_path=OUTPUT_PATH,
         batch=BATCH,
         imgsz=IMGSZ,
