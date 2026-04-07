@@ -1,7 +1,6 @@
 test_images
 train_images
-sample_submission.csv
-train.csv
+*csv
 yolo_classification_data
 runs/
 *.pt
