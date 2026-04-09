@@ -1,6 +1,9 @@
-test_images
-train_images
-*csv
-yolo_classification_data
+test_images/
+train_images/
+*.csv
+yolo_classification_data/
 runs/
+lightning_logs/
 *.pt
+*.out
+__pycache__/

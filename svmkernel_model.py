@@ -17,7 +17,6 @@ CSV_PATH = os.path.join(DATA_DIR, "train.csv")
 RANDOM_STATE = 42
 IMG_SIZE = 64
 
-# --- Functions ---
 def load_metadata(csv_path=CSV_PATH):
     df = pd.read_csv(csv_path)
     print(f"Loading {len(df)} entries, {df['TARGET'].nunique()} classes")

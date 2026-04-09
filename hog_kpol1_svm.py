@@ -15,7 +15,7 @@ from classify_common import (
     RUNS_DIR,
     SEED,
     build_classical_feature_matrix,
-    build_test_image,
+    load_test_image,
     load_metadata,
     load_submission_ids,
     set_seed,
@@ -73,7 +73,7 @@ def predict_classical_labels(model_path: Path, output_path: Path) -> pd.DataFram
     # build feature matrix for test set and predict the labels
     image_ids = load_submission_ids()
     features = [
-        extractor.transform(build_test_image(image_id))
+        extractor.transform(load_test_image(image_id))
         for image_id in image_ids
     ]
     x_test = np.stack(features, axis=0)

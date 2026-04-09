@@ -6,6 +6,7 @@ from typing import Iterable
 import cv2
 import numpy as np
 import pandas as pd
+from pandas import DataFrame
 import torch
 from PIL import Image
 from sklearn.model_selection import train_test_split
@@ -32,7 +33,7 @@ CLASSICAL_FEATURE_SIZE = 160 # Reduced dimensionality feature size, ADJUST AS NE
 
 
 @dataclass(frozen=True)
-class Dataset:
+class DatasetInfo:
     train_df: pd.DataFrame # pandas df containing training data
     val_df: pd.DataFrame # pandas df containing validation data
     class_names: list[str] # names of classes in the dataset
@@ -48,13 +49,13 @@ def set_seed(seed: int) -> None:
     torch.backends.cudnn.benchmark = False # disable autotune
 
 # Function to load the metadata from given CSV files to read it as a pandas df
-def load_metadata() -> pd.DataFrame:
+def load_metadata() -> DataFrame:
     df = pd.read_csv(TRAIN_CSV_PATH)
     print(f"Loaded {len(df)} rows of {df['TARGET'].nunique()} classes")
     return df
 
 # Function to split the df into training and validation sets as given in the files
-def split_dataset(df: pd.DataFrame, val_size: float, random_state: int) -> Dataset:
+def split_dataset(df: DataFrame, val_size: float, random_state: int) -> DatasetInfo:
     # sklearn function to split dataset into training and validation
     train_df, val_df = train_test_split(
         df,
@@ -65,8 +66,8 @@ def split_dataset(df: pd.DataFrame, val_size: float, random_state: int) -> Datas
     class_names = sorted(df["TARGET"].unique()) # Sort class names for standardization
     class_to_index = {name: index for index, name in enumerate(class_names)} # Map class names to integers for standardization
     print(f"Train images: {len(train_df)}, Validation images: {len(val_df)}")
-    # Return the split dataframes and useful metadata as a Dataset we defined earlier
-    return Dataset(
+    # Return the split dataframes and useful metadata as a DatasetMetadata we defined earlier
+    return DatasetInfo(
         train_df=train_df.reset_index(drop=True),
         val_df=val_df.reset_index(drop=True),
         class_names=class_names,
@@ -75,11 +76,10 @@ def split_dataset(df: pd.DataFrame, val_size: float, random_state: int) -> Datas
 
 # Function to load an image and resize it as square with RGB encoding
 def load_image(filename: str, size: int = IMAGE_SIZE) -> Image.Image:
-    image_path = TRAIN_IMAGE_PATH / filename
-    return Image.open(image_path).convert("RGB").resize((size, size))
+    return Image.open(TRAIN_IMAGE_PATH / filename).convert("RGB").resize((size, size))
 
 # Function to open an image for the test set (doing the same resizing and RGB encoding as the training images)
-def build_test_image(image_id: str, size: int = IMAGE_SIZE) -> Image.Image:
+def load_test_image(image_id: str, size: int = IMAGE_SIZE) -> Image.Image:
     return Image.open(TEST_IMAGE_PATH / f"{image_id}.jpg").convert("RGB").resize((size, size))
 
 # Function to load the submission IDs from the sample submission file (for parsing and standardization)
@@ -113,7 +113,7 @@ class ImageDataset(Dataset):
         # apply transform if we have any (like normalization)
         if self.transform is not None:
             image = self.transform(image)
-        label = torch.tensor(self.class_to_index[row["TARGET"]], dtype=torch.long) # convert the label to a tensor (integer encoding of class name)
+        label = torch.tensor(self.class_to_index[row["TARGET"]], dtype=torch.int64) # convert the label to a tensor (integer encoding of class name)
         return image, label
 
 
@@ -127,7 +127,7 @@ class TestDataset(Dataset):
 
     def __getitem__(self, index: int) -> tuple[torch.Tensor, str]:
         image_id = self.image_ids[index] # get the image id for the index
-        image = build_test_image(image_id) # load the test image
+        image = load_test_image(image_id) # load the test image
         # apply transform if we have any (like normalization)
         if self.transform is not None:
             image = self.transform(image)
@@ -189,22 +189,24 @@ class ConvNeurNetwork(torch.nn.Module):
 
 # Function to build the training and validation pipelines for our CNN (tensor conversion and normalization)
 def build_neural_transforms(train: bool) -> transforms.Compose:
-    normalize = transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)) # standard normalization adjust if necessary
+    # Use 0.5 mean/std for simpler normalization on butterfly data
+    normalize = transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
     if train:
         return transforms.Compose(
-            # for training, apply the following transforms to prevent overfitting
+            # for training, apply moderate transforms to prevent overfitting
             [
-                transforms.RandomResizedCrop(IMAGE_SIZE, scale=(0.75, 1.0)),
+                transforms.Resize((int(IMAGE_SIZE * 1.1), int(IMAGE_SIZE * 1.1))),  # Slight upscale
+                transforms.RandomCrop(IMAGE_SIZE),  # Random crop instead of resized crop
                 transforms.RandomHorizontalFlip(p=0.5),
-                transforms.RandomRotation(18),
-                transforms.ColorJitter(brightness=0.20, contrast=0.20, saturation=0.20, hue=0.04),
+                transforms.RandomRotation(10),  # Reduced from 18 to 10 degrees
+                transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.02),  # Reduced intensity
                 transforms.ToTensor(),
                 normalize,
-                transforms.RandomErasing(p=0.20, scale=(0.02, 0.12), ratio=(0.3, 3.3)),
             ]
         )
     # else just convert to tensor and normalize
     return transforms.Compose([
+        transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
         transforms.ToTensor(),
         normalize,
     ])
