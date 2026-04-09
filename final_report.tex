@@ -1,0 +1,191 @@
+\documentclass[10pt]{article} % page setup
+\usepackage[margin=2cm]{geometry} % page setup
+\usepackage{amsmath,amssymb,amsthm, mathtools} % helpful math cmds
+\usepackage{graphicx} % for inserting images
+\usepackage{enumitem} % enumerate config
+\usepackage{footnote} % footnote fix
+\usepackage{todonotes} % todos
+\usepackage[colorlinks=true, allcolors=blue]{hyperref} % hypertext links
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{listings} % typeset programs
+\usepackage{blindtext} % placeholders
+\usepackage{lastpage} % page references
+\usepackage{fancyhdr} % header config
+\usepackage{setspace} % line spacing
+\usepackage{textcomp, gensymb} % additional symbols
+\usepackage{parskip} % paragraph separation
+\usepackage{cancel} % strikethroughs
+\usepackage[T1]{fontenc}
+\usepackage{physics}
+\usepackage{pgfplots}
+\usepackage{listings}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{defaultstyle}{
+  backgroundcolor=\color{backcolour},
+  commentstyle=\color{codegreen},
+  keywordstyle=\color{magenta},
+  numberstyle=\tiny\color{codegray},
+  stringstyle=\color{codepurple},
+  basicstyle=\ttfamily\footnotesize,
+  breakatwhitespace=false,
+  breaklines=true,
+  captionpos=b,
+  keepspaces=true,
+  numbers=left,
+  numbersep=5pt,
+  showspaces=false,
+  showstringspaces=false,
+  showtabs=false,
+  tabsize=2
+}
+\lstset{style=defaultstyle}
+\pgfplotsset{compat=1.18}
+\renewcommand{\familydefault}{\sfdefault}
+
+\newcommand{\documentTitle}{Final Project Report} 
+\newcommand{\documentAuthor}{Rishabh Rengarajan, Joao de Vana, Austin Yilmaz}
+\newcommand{\courseTitle}{ELEC 378 Spring 2026}
+
+\title{}
+
+\geometry{margin=1in}
+\lstset{
+    tabsize=4,
+    basicstyle={\ttfamily},
+    captionpos=b,
+    belowskip=1em,
+    aboveskip=1em,
+    numbers=left,
+	escapechar=\@,
+}
+
+\title{
+    \textbf{\courseTitle} \\
+    \textbf{\documentTitle} \\
+    \date
+    \bigskip
+    \bigskip
+    \bigskip
+}
+\setlength\parindent{0pt}
+
+\author{\documentAuthor}
+\date{April 2026}
+
+\begin{document}
+
+\maketitle
+
+\newpage
+
+\section{Introduction and Contribution Outline}
+This report presents the challenges faced, how we overcame them, and our insights on the process for the final project of the ELEC378 course. The final project is an image classification problem where we are presented over 12,000 labeled images of butterflies to train at least two distinct classifiers, and about 1,000 test images to evaluate the classifiers we trained.\\\\Our project team is named \textbf{The Front Row}, and the team members and their contributions to the final project are listed as follows:\begin{enumerate}
+    \item \textbf{Austin Yilmaz (ay87):}\begin{enumerate}
+        \item Preparing the sectioning and outline for the project report
+        \item Coding a Convolutional Neural Network classifier training and evaluation pipeline through Python
+        \item Coding an SVM-based classifier training and evaluation pipeline through Python
+        \item \textbf{fill these as you progress through the project}
+    \end{enumerate}
+    \item \textbf{yourname and netid}\begin{enumerate}
+        \item hello world
+    \end{enumerate}
+\end{enumerate}
+
+\section{Dataset Description}
+\subsection{General appearance of the dataset}
+\textbf{TODO: Observe the images throughout the classes, describe their similarities and differences, and how those may play a role in classification/training/validation.}
+\subsection{What's easy and what's not}
+\textbf{TODO: Depending on your observation, describe how the attributes of the dataset make our job easier and what challenges it may introduce in terms of classification (like overfitting or misclassifying similar butterflies)} 
+\subsection{How we split the dataset for training and validation}
+\textbf{TODO: Explain your approach on splitting the dataset to train and val sets, and justify it using at least one outside source or using your observations made above. (for example, if we do a random 80/20 split, we might cite some study that says random sample 80/20 splits are empirically as good as any strategic split)}
+
+\section{Preprocessing of Data and Design Choices}
+\subsection{Preprocessing pipeline applied to data before training}
+\textbf{TODO: List all the preprocessing steps you applied to the data before training, might apply different steps for different models, so list them distinctly, e.g. check below}
+\subsubsection{Preprocessing for Classifier 1}\begin{enumerate}
+    \item Step 1: Change all images to images of toilets
+    \item Step 2: ...
+\end{enumerate}
+\subsubsection{Preprocessing for Classifier 2}\begin{enumerate}
+    \item Step 1: ...
+\end{enumerate}
+\subsection{Comparison of the preprocessing pipelines applied}
+\textbf{TODO: Compare the preprocessing pipelines you applied for your classifiers, listing their strengths and tradeoffs. If you ultimately stuck with one pipeline amongst them, list what preprocessing steps you discarded and kept, and why you deemed it as superior. If not, explain why no single preprocessing pipeline is superior to other and how it depends on the model being trained.}
+
+\section{Models Considered for the Project}
+\subsection{Model 1: Neural Network}
+\subsubsection{Why we chose to try it}
+    \textbf{TODO: Explain why this choice was a strong one and justify it by citing a source on its accuracy and robustness}
+\subsubsection{Algorithm/Workflow}
+    \textbf{TODO: Explain how the model works, and what mathematical concepts it relies on}
+\subsubsection{Design choices that affect the model}
+    \textbf{TODO: Explain the hyperparameter choices and other design choices (like the operations in each layer of a neural network) and how they affect the model performance}
+\subsubsection{Course concepts used in the model}
+    \textbf{TODO: Elaborate if any course concepts (like PCA, Cauchy-Schwarz, SVM etc.) were used in the model, and how they are significant for the model}
+\subsubsection{Loss function of the model and how it is optimized}
+    \textbf{TODO: List the loss function of the model and how the model optimizes it (for example optimizing cross entropy with adamW)}
+\subsection{Model 2: Whatever}
+\subsubsection{Why we chose to try it}
+\textbf{Same applies. Template.}\\\\...
+
+\section{How Each Model Was Trained}
+\subsection{Model 1: Neural Network}
+\textbf{TODO: Elaborate on how the model training and validation procedure works/worked. Include the design choices you made overtime (from the design choices you listed above that affect the model) and why you made those choices. If you made any changes to those choices or the procedure, list them and explain why you made the change.}
+\subsection{Model 2: Whatever}
+
+\section{Quantitative Comparison of the Models}
+\subsection{Model 1: Neural Network}
+\subsubsection{Training performance and robustness}
+\textbf{TODO: Explain how RELATIVELY easy it was to train the model with the data at hand.}
+\subsubsection{Validation performance and accuracy}
+\textbf{TODO: Provide data on how accurately the model validated the validation set.}
+\subsubsection{Kaggle/test accuracy of the model}
+\textbf{TODO: Elaborate on the Kaggle accuracy of the model, and how it compares to the validation accuracy.}
+\subsubsection{Relative strengths and weaknesses of the model}
+\textbf{TODO: Based on how the model quantitatively compares to the other models in terms of performance, also based on the correspondence between its validation and test performance, elaborate on the strengths and weaknesses of the model. For example, a strength can be validation and test accuracies both being high, implying less overfitting. A weakness can be long training times and requirement of precise tuning.}
+\subsection{Model 2: Whatever}
+do the same thing as above
+
+\section{Overfitting and Generalization Analysis}
+\textbf{TODO: Describe the instances where your models overfit/underfit, by first stating which model it was, and elaborate on what caused it. Then discuss strategies you resorted to, to overcome that over/underfitting. You might find it useful to explain overfitting/underfitting using the validation/test accuracy discrepancies of the model stated above.}
+\subsection{Overfitting in Neural Network Model}
+\subsubsection{Evidence of overfitting}
+\textbf{EXAMPLE: The kaggle and test accuracies are not the same. blablabla...}
+\subsubsection{What may have caused it}
+\textbf{TODO: Explain the suspected cause of overfitting/underfitting.}
+\subsubsection{How we tried to overcome it}
+\textbf{TODO: Elaborate on what methods you used on mitigating the overfitting, and how well it mitigated it. If you were unable to improve, relate it to model complexity and task difficulty.}
+\subsection{Underfitting in whatever}
+same argument.
+
+\section{Pipeline for the Final Submission}
+\textbf{TODO: Explain each process of an image's journey in the final submission pipeline, starting from its preprocessing up until how it's classified with a given label. HIGHLY RECOMMEND TO ADD A FLOWCHART OR A VISUAL DRAW.IO MODEL ETC HERE!}
+\subsection{Preprocessing of the image}
+\textbf{TODO: Briefly explain how a particular image is preprocessed in the final pipeline.}
+\subsection{Final model choice and its properties}
+\textbf{TODO: Briefly explain what model you chose for the final pipeline touching on the properties of the image that the model suits well.}
+\subsection{How the image trains the model}
+\textbf{TODO: Briefly explain how the image is used in the training process of the model, touching on exactly how it improves the optimization process}
+\subsection{How the model classifies the image}
+\textbf{TODO: Briefly explain how the model processes the image to label it.}
+\subsection{Flowchart}
+\textbf{TODO: Include a flowchart visualizing the whole process you described.}
+
+\section{Results and Conclusion}
+\subsection{Results of the project - what we learned}
+\textbf{TODO: Reflect on the overall results of the project and what new information you have learned.}
+\subsection{Comments on the final model's performance}
+\textbf{TODO: What do you think about how your final model performed in terms of performance and accuracy? Elaborate.}
+\subsection{What surprised us}
+\textbf{TODO: List all the things that were unexpected. They can be good, bad, or ugly.}
+\subsection{What's new to come}
+\textbf{TODO: Prepare a roadmap for the future on how the project could be improved if you had the time for it.}
+
+\end{document}
