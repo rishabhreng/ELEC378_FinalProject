@@ -17,7 +17,7 @@ from classify_common import (
     build_classical_feature_matrix,
     load_test_image,
     load_metadata,
-    load_submission_ids,
+    get_submission_image_ids,
     set_seed,
     split_dataset,
 )
@@ -71,7 +71,7 @@ def predict_classical_labels(model_path: Path, output_path: Path) -> pd.DataFram
     extractor = FeatureExtractor(feature_size=int(checkpoint["feature_size"]))
 
     # build feature matrix for test set and predict the labels
-    image_ids = load_submission_ids()
+    image_ids = get_submission_image_ids()
     features = [
         extractor.transform(load_test_image(image_id))
         for image_id in image_ids

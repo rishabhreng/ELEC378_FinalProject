@@ -12,6 +12,7 @@ from PIL import Image
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
+import lightning as L
 
 '''
 Common functions to be used in both the HOG-SVM and CNN classifiers as well as model specific utility functions.
@@ -20,7 +21,6 @@ Common functions to be used in both the HOG-SVM and CNN classifiers as well as m
 
 FILE_PATH = Path(__file__).resolve().parent # To get the directory of our Python code
 TRAIN_CSV_PATH = FILE_PATH / "train.csv" # Path to the train.csv file
-SAMPLE_SUBMISSION_PATH = FILE_PATH / "sample_submission.csv" # Path to the sample_submission.csv file
 TRAIN_IMAGE_PATH = FILE_PATH / "train_images" / "train_images" # Path to the train_images directory
 TEST_IMAGE_PATH = FILE_PATH / "test_images" / "test_images" # Path to the test_images directory
 RUNS_DIR = FILE_PATH / "runs" # Our trained models and logs
@@ -82,9 +82,9 @@ def load_image(filename: str, size: int = IMAGE_SIZE) -> Image.Image:
 def load_test_image(image_id: str, size: int = IMAGE_SIZE) -> Image.Image:
     return Image.open(TEST_IMAGE_PATH / f"{image_id}.jpg").convert("RGB").resize((size, size))
 
-# Function to load the submission IDs from the sample submission file (for parsing and standardization)
-def load_submission_ids() -> pd.Series:
-    return pd.read_csv(SAMPLE_SUBMISSION_PATH)["ID"]
+# Function to load the submission IDs from test images directory
+def get_submission_image_ids() -> list[str]:
+    return [path.stem for path in sorted(list(Path('./test_images/test_images/').glob('*.jpg')))]
 
 # Function to compute the class weights for our CNN loss function
 def compute_class_weights(train_df: pd.DataFrame, class_names: list[str]) -> torch.Tensor:
@@ -180,6 +180,9 @@ class ConvNeurNetwork(torch.nn.Module):
         self.classifier = torch.nn.Sequential(
             torch.nn.Flatten(),
             torch.nn.Dropout(0.35), # for regularization to prevent overfitting, adjust as necessary for performance/accuracy tradeoff
+            # torch.nn.Linear(384, 512),
+            # torch.nn.ReLU(),
+            # torch.nn.Dropout(0.5),
             torch.nn.Linear(384, num_classes),
         )
 
@@ -198,7 +201,9 @@ def build_neural_transforms(train: bool) -> transforms.Compose:
                 transforms.Resize((int(IMAGE_SIZE * 1.1), int(IMAGE_SIZE * 1.1))),  # Slight upscale
                 transforms.RandomCrop(IMAGE_SIZE),  # Random crop instead of resized crop
                 transforms.RandomHorizontalFlip(p=0.5),
-                transforms.RandomRotation(10),  # Reduced from 18 to 10 degrees
+                transforms.RandomRotation(10),  # Reduced from 18 to 10 degrees,
+                transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),
+                transforms.RandAugment(2, 10),
                 transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.02),  # Reduced intensity
                 transforms.ToTensor(),
                 normalize,
@@ -210,20 +215,6 @@ def build_neural_transforms(train: bool) -> transforms.Compose:
         transforms.ToTensor(),
         normalize,
     ])
-
-# Function to build our neural network data loaders for training and validation
-def build_neural_loaders(
-    dataset: Dataset,
-    batch_size: int,
-    num_workers: int,
-) -> tuple[DataLoader, DataLoader]:
-    # create pytorch datasets and loaders for training and validation
-    train_dataset = ImageDataset(dataset.train_df, dataset.class_to_index, build_neural_transforms(train=True))
-    val_dataset = ImageDataset(dataset.val_df, dataset.class_to_index, build_neural_transforms(train=False))
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
-    return train_loader, val_loader
-
 
 # used for HOG-SVM classifier to build the feature matrix for training and validation
 class FeatureExtractor:
@@ -255,3 +246,85 @@ class FeatureExtractor:
 def build_classical_feature_matrix(df: pd.DataFrame, extractor: FeatureExtractor) -> np.ndarray:
     features = [extractor.transform(Image.open(TRAIN_IMAGE_PATH / row.file_name).convert("RGB")) for row in df.itertuples(index=False)]
     return np.stack(features, axis=0)
+
+
+class ButterflyDataModule(L.LightningDataModule):
+    """LightningDataModule for loading butterfly/moth image classification data."""
+    
+    def __init__(
+        self,
+        batch_size: int = 32,
+        num_workers: int = 4,
+        val_size: float = 0.2,
+        seed: int = SEED,
+    ) -> None:
+        super().__init__()
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+        self.val_size = val_size
+        self.seed = seed
+        
+    def setup(self, stage: str = None) -> None:
+        """Load and prepare data for training, validation, and testing."""
+        df = load_metadata()
+        dataset_info = split_dataset(df, val_size=self.val_size, random_state=self.seed)
+        # Load metadata and split into train/val
+        self.class_names = dataset_info.class_names
+        # Compute class weights for loss function
+        self.train_df = dataset_info.train_df
+        self.val_df = dataset_info.val_df
+        self.class_weights = compute_class_weights(self.train_df, self.class_names)
+
+        if stage in ("fit", None):
+            
+            
+            
+            self.class_to_index = dataset_info.class_to_index
+            
+            # Create train and val datasets
+            self.train_dataset = ImageDataset(
+                self.train_df,
+                self.class_to_index,
+                build_neural_transforms(train=True)
+            )
+            
+            self.val_dataset = ImageDataset(
+                self.val_df,
+                self.class_to_index,
+                build_neural_transforms(train=False)
+            )
+        
+        # Load test dataset for prediction
+        if stage in ("predict", None):
+            image_ids = get_submission_image_ids()
+            self.test_dataset = TestDataset(image_ids, transform=build_neural_transforms(train=False))
+    
+    def train_dataloader(self) -> DataLoader:
+        """Return training dataloader."""
+        return DataLoader(
+            self.train_dataset,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=self.num_workers,
+            pin_memory=True
+        )
+    
+    def val_dataloader(self) -> DataLoader:
+        """Return validation dataloader."""
+        return DataLoader(
+            self.val_dataset,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            pin_memory=True
+        )
+    
+    def predict_dataloader(self) -> DataLoader:
+        """Return prediction dataloader."""
+        return DataLoader(
+            self.test_dataset,
+            batch_size=1,
+            shuffle=False,
+            num_workers=self.num_workers,
+            pin_memory=True
+        )
