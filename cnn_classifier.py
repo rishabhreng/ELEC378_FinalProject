@@ -4,6 +4,7 @@ import torch
 from torch import nn
 import lightning as L
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint, LearningRateMonitor
+from lightning.pytorch.loggers.litlogger import LitLogger
 import argparse
 
 # import a bunch of stuff from our common module
@@ -100,11 +101,11 @@ class CNNButterflyClassifier(L.LightningModule):
         )
         
         # Smooth LR drop with cosine fn
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-            optimizer=optimizer,
-            T_0=5,  # restart every 5 epochs
-            T_mult=2,  # double the period after each restart
-        )
+        # scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+        #     optimizer=optimizer,
+        #     T_0=5,  # restart every 5 epochs
+        #     T_mult=2,  # double the period after each restart
+        # )
 
         # Use ReduceLROnPlateau for better plateau handling
         # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -114,13 +115,20 @@ class CNNButterflyClassifier(L.LightningModule):
         #     patience=5,  # wait 5 epochs before reducing
         #     min_lr=1e-7,
         # )
-        
+
+        # aggressive LR
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            optimizer,
+            max_lr=self.learning_rate * 10,
+            total_steps=self.trainer.estimated_stepping_batches,
+            pct_start=0.2,  # warm up for first 20% of training,
+        )
         return {
             "optimizer": optimizer,
             "lr_scheduler": {
                 "scheduler": scheduler,
                 "monitor": "val_accuracy",
-                "interval": "epoch",
+                "interval": "step",
                 "frequency": 1,
             }
         }
@@ -165,8 +173,8 @@ def main():
     )
     
     # Setup the data module to prepare data
+    data_module.setup()
     if not args.no_train:
-        data_module.setup(stage="fit")
         num_classes = len(data_module.class_names)
         class_weights = data_module.class_weights
     else:
@@ -197,6 +205,7 @@ def main():
         monitor="val_accuracy",
         patience=args.patience,
         mode="max",
+        verbose=True
     )
     
     checkpointer = ModelCheckpoint(
@@ -205,9 +214,13 @@ def main():
         monitor="val_accuracy",
         mode="max",
         save_top_k=1,
+        verbose=True
     )
 
-    lr_monitor = LearningRateMonitor(logging_interval='epoch')
+    lr_monitor = LearningRateMonitor(
+        logging_interval='step', 
+        log_momentum=True, 
+        log_weight_decay=True)
 
     
     # Create the Lightning Trainer
@@ -218,6 +231,7 @@ def main():
         callbacks=[early_stop, checkpointer, lr_monitor],
         enable_progress_bar=True,
         log_every_n_steps=10,
+        logger=LitLogger(run_dir / "lightning_logs"),
     )
 
     
@@ -231,7 +245,7 @@ def main():
 
     if not args.no_predict:
         # Setup data module for prediction
-        data_module.setup(stage="predict")
+        # data_module.setup(stage="predict")
         
         # Determine which checkpoint to use
         ckpt_to_use = checkpointer.best_model_path if not args.no_train else args.ckpt_path

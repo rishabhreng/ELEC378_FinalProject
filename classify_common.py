@@ -179,10 +179,11 @@ class ConvNeurNetwork(torch.nn.Module):
         # map the 384 features from the layers to the number of classes we have
         self.classifier = torch.nn.Sequential(
             torch.nn.Flatten(),
-            torch.nn.Dropout(0.35), # for regularization to prevent overfitting, adjust as necessary for performance/accuracy tradeoff
+            torch.nn.Dropout(0.4), # for regularization to prevent overfitting, adjust as necessary for performance/accuracy tradeoff
             # torch.nn.Linear(384, 512),
             # torch.nn.ReLU(),
-            # torch.nn.Dropout(0.5),
+            # torch.nn.Linear(512, 384),
+            # torch.nn.ReLU(),
             torch.nn.Linear(384, num_classes),
         )
 
