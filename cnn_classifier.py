@@ -3,7 +3,7 @@ import pandas as pd
 import torch
 from torch import nn
 import lightning as L
-from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
+from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint, LearningRateMonitor
 import argparse
 
 # import a bunch of stuff from our common module
@@ -47,7 +47,7 @@ class CNNButterflyClassifier(L.LightningModule):
 
     def forward(self, x):
         return self.cnn(x)
-
+    
     def training_step(self, batch, batch_idx):
         x, y = batch
         logits = self(x)
@@ -199,23 +199,27 @@ def main():
         mode="max",
     )
     
-    checkpoint_callback = ModelCheckpoint(
+    checkpointer = ModelCheckpoint(
         dirpath=run_dir,
         filename="best_cnn",
         monitor="val_accuracy",
         mode="max",
         save_top_k=1,
     )
+
+    lr_monitor = LearningRateMonitor(logging_interval='epoch')
+
     
     # Create the Lightning Trainer
     trainer = L.Trainer(
         max_epochs=args.epochs,
         accelerator=device if torch.cuda.is_available() else "cpu",
         devices=1 if torch.cuda.is_available() else None,
-        callbacks=[early_stop, checkpoint_callback],
+        callbacks=[early_stop, checkpointer, lr_monitor],
         enable_progress_bar=True,
         log_every_n_steps=10,
     )
+
     
     if not args.no_train:
         # Train the model
@@ -230,7 +234,7 @@ def main():
         data_module.setup(stage="predict")
         
         # Determine which checkpoint to use
-        ckpt_to_use = checkpoint_callback.best_model_path if not args.no_train else args.ckpt_path
+        ckpt_to_use = checkpointer.best_model_path if not args.no_train else args.ckpt_path
         
         # Load model from checkpoint with strict=False to ignore old state_dict keys
         model = CNNButterflyClassifier.load_from_checkpoint(
