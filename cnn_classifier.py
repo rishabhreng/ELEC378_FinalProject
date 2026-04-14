@@ -173,8 +173,8 @@ def main():
     )
     
     # Setup the data module to prepare data
-    data_module.setup()
     if not args.no_train:
+        data_module.setup(stage="fit")
         num_classes = len(data_module.class_names)
         class_weights = data_module.class_weights
     else:
@@ -199,6 +199,31 @@ def main():
         label_smoothing=args.label_smoothing,
         class_weights=class_weights,
     )
+    
+ 
+    if args.ckpt_path and not args.no_train:
+        print(f"Loading checkpoint from {args.ckpt_path}")
+        try:
+            checkpoint = torch.load(args.ckpt_path, map_location="cpu")
+            state_dict = checkpoint["state_dict"]
+            
+            # Load only the feature extraction layers, skip classifier layers
+            model_state = model.state_dict()
+            compatible_keys = {}
+            
+            for key, value in state_dict.items():
+                if key in model_state and model_state[key].shape == value.shape:
+                    compatible_keys[key] = value
+                elif "classifier" not in key:  # Try to load non-classifier layers
+                    if key in model_state and model_state[key].shape == value.shape:
+                        compatible_keys[key] = value
+            
+            # Load compatible keys
+            model.load_state_dict(compatible_keys, strict=False)
+            print(f"Loaded {len(compatible_keys)} compatible layers from checkpoint")
+        except Exception as e:
+            print(f"Warning: Could not load checkpoint: {e}")
+            print("Proceeding with random initialization")
     
     # Define callbacks for early stopping and checkpointing
     early_stop = EarlyStopping(
@@ -230,8 +255,7 @@ def main():
         devices=1 if torch.cuda.is_available() else None,
         callbacks=[early_stop, checkpointer, lr_monitor],
         enable_progress_bar=True,
-        log_every_n_steps=10,
-        logger=LitLogger(run_dir / "lightning_logs"),
+        logger=LitLogger(root_dir=run_dir / "lightning_logs", name=args.run_name),
     )
 
     
@@ -240,7 +264,6 @@ def main():
         trainer.fit(
             model,
             datamodule=data_module,
-            ckpt_path=args.ckpt_path,
         )
 
     if not args.no_predict:

@@ -180,16 +180,39 @@ class ConvNeurNetwork(torch.nn.Module):
         self.classifier = torch.nn.Sequential(
             torch.nn.Flatten(),
             torch.nn.Dropout(0.4), # for regularization to prevent overfitting, adjust as necessary for performance/accuracy tradeoff
-            # torch.nn.Linear(384, 512),
-            # torch.nn.ReLU(),
-            # torch.nn.Linear(512, 384),
-            # torch.nn.ReLU(),
-            torch.nn.Linear(384, num_classes),
+            torch.nn.Linear(384, 1024),
+            torch.nn.ReLU(),
+            torch.nn.Linear(1024, 512),
+            torch.nn.ReLU(),
+            torch.nn.Linear(512, num_classes),
         )
 
     # forward pass - the input goes through the layers to extract the features
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         return self.classifier(self.features(inputs))
+
+# Custom transform to remove background using GrabCut algorithm
+class RemoveBackground:
+    """Remove background from butterfly/moth images using GrabCut algorithm."""
+    def __call__(self, img: Image.Image) -> Image.Image:
+        try:
+            arr = np.array(img).astype(np.uint8)
+            
+            h, w = arr.shape[:-1]
+            rect = (int(0.01 * w), int(0.01 * h), int(0.99 * w), int(0.99 * h))
+            
+            mask = np.zeros((h, w), np.uint8)
+            cv2.grabCut(arr, mask, rect, np.zeros((1, 65)), np.zeros((1, 65), np.float64), 5, cv2.GC_INIT_WITH_RECT)
+            fg_mask = np.where((mask == cv2.GC_FGD) | (mask == cv2.GC_PR_FGD), 1, 0).astype(np.uint8)
+            fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, np.ones((3, 3)))
+            fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_CLOSE, np.ones((5, 5)))
+            
+            arr[fg_mask == 0] = 255
+            return Image.fromarray(arr)
+        except Exception as e:
+            # If background removal fails, return original image
+            print(f"Warning: Background removal failed: {e}. Using original image.")
+            return img
 
 # Function to build the training and validation pipelines for our CNN (tensor conversion and normalization)
 def build_neural_transforms(train: bool) -> transforms.Compose:
@@ -199,6 +222,7 @@ def build_neural_transforms(train: bool) -> transforms.Compose:
         return transforms.Compose(
             # for training, apply moderate transforms to prevent overfitting
             [
+                RemoveBackground(),  # Remove background first
                 transforms.Resize((int(IMAGE_SIZE * 1.1), int(IMAGE_SIZE * 1.1))),  # Slight upscale
                 transforms.RandomCrop(IMAGE_SIZE),  # Random crop instead of resized crop
                 transforms.RandomHorizontalFlip(p=0.5),
@@ -212,6 +236,7 @@ def build_neural_transforms(train: bool) -> transforms.Compose:
         )
     # else just convert to tensor and normalize
     return transforms.Compose([
+        RemoveBackground(),  # Remove background first
         transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
         transforms.ToTensor(),
         normalize,
@@ -276,29 +301,24 @@ class ButterflyDataModule(L.LightningDataModule):
         self.val_df = dataset_info.val_df
         self.class_weights = compute_class_weights(self.train_df, self.class_names)
 
-        if stage in ("fit", None):
-            
-            
-            
-            self.class_to_index = dataset_info.class_to_index
-            
-            # Create train and val datasets
-            self.train_dataset = ImageDataset(
-                self.train_df,
-                self.class_to_index,
-                build_neural_transforms(train=True)
-            )
-            
-            self.val_dataset = ImageDataset(
-                self.val_df,
-                self.class_to_index,
-                build_neural_transforms(train=False)
-            )
+        self.class_to_index = dataset_info.class_to_index
+        
+        # Create train and val datasets
+        self.train_dataset = ImageDataset(
+            self.train_df,
+            self.class_to_index,
+            build_neural_transforms(train=True)
+        )
+        
+        self.val_dataset = ImageDataset(
+            self.val_df,
+            self.class_to_index,
+            build_neural_transforms(train=False)
+        )
         
         # Load test dataset for prediction
-        if stage in ("predict", None):
-            image_ids = get_submission_image_ids()
-            self.test_dataset = TestDataset(image_ids, transform=build_neural_transforms(train=False))
+        image_ids = get_submission_image_ids()
+        self.test_dataset = TestDataset(image_ids, transform=build_neural_transforms(train=False))
     
     def train_dataloader(self) -> DataLoader:
         """Return training dataloader."""
