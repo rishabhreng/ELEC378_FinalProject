@@ -22,11 +22,9 @@ Common functions to be used in both the HOG-SVM and CNN classifiers as well as m
 FILE_PATH = Path(__file__).resolve().parent  # To get the directory of our Python code
 TRAIN_CSV_PATH = FILE_PATH / "train.csv"  # Path to the train.csv file
 TRAIN_IMAGE_PATH = (
-    FILE_PATH / "train_images" / "train_images"
+    FILE_PATH / "train_images_cropped"
 )  # Path to the train_images directory
-TEST_IMAGE_PATH = (
-    FILE_PATH / "test_images" / "test_images"
-)  # Path to the test_images directory
+TEST_IMAGE_PATH = FILE_PATH / "test_images_cropped"  # Path to the test_images directory
 RUNS_DIR = FILE_PATH / "runs"  # Our trained models and logs
 
 SEED = 42  # For reproducibility - answer to the ultimate question of life, the universe, and everything
@@ -101,7 +99,9 @@ def load_test_image(image_id: str, size: int = IMAGE_SIZE) -> Image.Image:
 def get_submission_image_ids() -> list[str]:
     return [
         path.stem
-        for path in sorted(list(Path("./test_images/test_images/").glob("*.jpg")))
+        for path in sorted(
+            list(Path("./test_images_cropped/").glob("*.jpg"))
+        )
     ]
 
 
@@ -255,7 +255,6 @@ def build_neural_transforms(train: bool) -> transforms.Compose:
     if train:
         return transforms.Compose(
             [
-                RemoveBackground(),
                 transforms.Resize((int(IMAGE_SIZE * 1.1), int(IMAGE_SIZE * 1.1))),
                 transforms.RandomCrop(IMAGE_SIZE),
                 transforms.RandomHorizontalFlip(p=0.5),
@@ -271,7 +270,6 @@ def build_neural_transforms(train: bool) -> transforms.Compose:
         )
     return transforms.Compose(
         [
-            RemoveBackground(),
             transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
             transforms.ToTensor(),
             transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)),
