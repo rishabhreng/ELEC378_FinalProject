@@ -11,7 +11,7 @@ import torch
 from PIL import Image
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset
-from torchvision import transforms
+import torchvision.transforms.v2 as transforms
 import lightning as L
 
 """
@@ -19,20 +19,14 @@ Common functions to be used in both the HOG-SVM and CNN classifiers as well as m
 """
 
 
-FILE_PATH = Path(__file__).resolve().parent  # To get the directory of our Python code
-TRAIN_CSV_PATH = FILE_PATH / "train.csv"  # Path to the train.csv file
-TRAIN_IMAGE_PATH = (
-    FILE_PATH / "train_images_cropped"
-)  # Path to the train_images directory
-TEST_IMAGE_PATH = FILE_PATH / "test_images_cropped"  # Path to the test_images directory
-RUNS_DIR = FILE_PATH / "runs"  # Our trained models and logs
+FILE_PATH = Path(__file__).resolve().parent
+TRAIN_CSV_PATH = FILE_PATH / "train.csv"
+TRAIN_IMAGE_PATH = FILE_PATH / "train_images_cropped"
+TEST_IMAGE_PATH = FILE_PATH / "test_images_cropped"
+RUNS_DIR = FILE_PATH / "runs"
 
 SEED = 42  # For reproducibility - answer to the ultimate question of life, the universe, and everything
-IMAGE_SIZE = (
-    224  # Resize images to square for our classifiers just like we did for YOLO
-)
-
-
+IMAGE_SIZE = 224
 CLASSICAL_FEATURE_SIZE = 160  # Reduced dimensionality feature size, ADJUST AS NEEDED FOR PERFORMANCE/ACCURACY TRADEOFF
 
 
@@ -42,16 +36,6 @@ class DatasetInfo:
     val_df: pd.DataFrame  # pandas df containing validation data
     class_names: list[str]  # names of classes in the dataset
     class_to_index: dict[str, int]  # map class names to integers for standardization
-
-
-# Function to set seeds for all models for reproducibility
-def set_seed(seed: int) -> None:
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True  # disable stochasticity
-    torch.backends.cudnn.benchmark = False  # disable autotune
 
 
 # Function to load the metadata from train.csv
@@ -83,26 +67,19 @@ def split_dataset(df: DataFrame, val_size: float, random_state: int) -> DatasetI
 
 # Load and resize image to RGB
 def load_image(filename: str, size: int = IMAGE_SIZE) -> Image.Image:
-    return Image.open(TRAIN_IMAGE_PATH / filename).convert("RGB").resize((size, size))
+    return cv2.cvtColor(cv2.imread(str(TRAIN_IMAGE_PATH / filename)), cv2.COLOR_BGR2RGB)
 
 
 # Load test image with same preprocessing as training
 def load_test_image(image_id: str, size: int = IMAGE_SIZE) -> Image.Image:
-    return (
-        Image.open(TEST_IMAGE_PATH / f"{image_id}.jpg")
-        .convert("RGB")
-        .resize((size, size))
+    return cv2.cvtColor(
+        cv2.imread(str(TEST_IMAGE_PATH / f"{image_id}.jpg")), cv2.COLOR_BGR2RGB
     )
 
 
 # Load submission image IDs from test directory
 def get_submission_image_ids() -> list[str]:
-    return [
-        path.stem
-        for path in sorted(
-            list(Path("./test_images_cropped/").glob("*.jpg"))
-        )
-    ]
+    return [path.stem for path in sorted(list(Path(TEST_IMAGE_PATH).glob("*.jpg")))]
 
 
 # Compute class weights to handle class imbalance
@@ -164,90 +141,63 @@ class TestDataset(Dataset):
         return image, image_id
 
 
-class ConvNeurNetwork(torch.nn.Module):
-    """Convolutional neural network for butterfly/moth image classification."""
+class ResidualBlock(torch.nn.Module):
+    def __init__(self, in_channels, out_channels, stride=1):
+        super().__init__()
+        self.conv1 = torch.nn.Conv2d(
+            in_channels,
+            out_channels,
+            kernel_size=3,
+            stride=stride,
+            padding=1,
+            bias=False,
+        )
+        self.bn1 = torch.nn.BatchNorm2d(out_channels)
+        self.conv2 = torch.nn.Conv2d(
+            out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False
+        )
+        self.bn2 = torch.nn.BatchNorm2d(out_channels)
 
+        self.shortcut = torch.nn.Sequential()
+        if stride != 1 or in_channels != out_channels:
+            self.shortcut = torch.nn.Sequential(
+                torch.nn.Conv2d(
+                    in_channels, out_channels, kernel_size=1, stride=stride, bias=False
+                ),
+                torch.nn.BatchNorm2d(out_channels),
+            )
+
+    def forward(self, x):
+        out = torch.nn.functional.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        out += self.shortcut(x)  # The Skip Connection
+        return torch.nn.functional.relu(out)
+
+
+class CNN(torch.nn.Module):
     def __init__(self, num_classes: int) -> None:
         super().__init__()
-        # Convolutional feature extraction blocks
         self.features = torch.nn.Sequential(
-            torch.nn.Conv2d(3, 64, kernel_size=3, padding=1),
+            torch.nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False),
             torch.nn.BatchNorm2d(64),
             torch.nn.ReLU(inplace=True),
-            torch.nn.Conv2d(64, 64, kernel_size=3, padding=1),
-            torch.nn.BatchNorm2d(64),
-            torch.nn.ReLU(inplace=True),
-            torch.nn.MaxPool2d(2),
-            torch.nn.Dropout2d(0.10),
-            torch.nn.Conv2d(64, 128, kernel_size=3, padding=1),
-            torch.nn.BatchNorm2d(128),
-            torch.nn.ReLU(inplace=True),
-            torch.nn.Conv2d(128, 128, kernel_size=3, padding=1),
-            torch.nn.BatchNorm2d(128),
-            torch.nn.ReLU(inplace=True),
-            torch.nn.MaxPool2d(2),
-            torch.nn.Dropout2d(0.15),
-            torch.nn.Conv2d(128, 256, kernel_size=3, padding=1),
-            torch.nn.BatchNorm2d(256),
-            torch.nn.ReLU(inplace=True),
-            torch.nn.Conv2d(256, 256, kernel_size=3, padding=1),
-            torch.nn.BatchNorm2d(256),
-            torch.nn.ReLU(inplace=True),
-            torch.nn.MaxPool2d(2),
-            torch.nn.Dropout2d(0.20),
-            torch.nn.Conv2d(256, 384, kernel_size=3, padding=1),
-            torch.nn.BatchNorm2d(384),
-            torch.nn.ReLU(inplace=True),
+            torch.nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
+            ResidualBlock(64, 64),
+            ResidualBlock(64, 128, stride=2),
+            ResidualBlock(128, 256, stride=2),
+            ResidualBlock(256, 512, stride=2),
+            torch.nn.Dropout2d(0.25),
             torch.nn.AdaptiveAvgPool2d((1, 1)),
         )
-        # Classification head
+
         self.classifier = torch.nn.Sequential(
-            torch.nn.Flatten(),
-            torch.nn.Dropout(0.4),
-            torch.nn.Linear(384, 1024),
-            torch.nn.ReLU(),
-            torch.nn.Linear(1024, 512),
-            torch.nn.ReLU(),
-            torch.nn.Linear(512, num_classes),
+            torch.nn.Flatten(), torch.nn.Dropout(0.5), torch.nn.Linear(512, num_classes)
         )
 
-    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        return self.classifier(self.features(inputs))
-
-
-# Custom transform to remove background using GrabCut algorithm
-class RemoveBackground:
-    """Remove background from images using GrabCut algorithm."""
-
-    def __call__(self, img: Image.Image) -> Image.Image:
-        try:
-            arr = np.array(img).astype(np.uint8)
-
-            h, w = arr.shape[:-1]
-            rect = (int(0.01 * w), int(0.01 * h), int(0.99 * w), int(0.99 * h))
-
-            mask = np.zeros((h, w), np.uint8)
-            cv2.grabCut(
-                arr,
-                mask,
-                rect,
-                np.zeros((1, 65)),
-                np.zeros((1, 65), np.float64),
-                5,
-                cv2.GC_INIT_WITH_RECT,
-            )
-            fg_mask = np.where(
-                (mask == cv2.GC_FGD) | (mask == cv2.GC_PR_FGD), 1, 0
-            ).astype(np.uint8)
-            fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, np.ones((3, 3)))
-            fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_CLOSE, np.ones((5, 5)))
-
-            arr[fg_mask == 0] = 255
-            return Image.fromarray(arr)
-        except Exception as e:
-            # If background removal fails, return original image
-            print(f"Warning: Background removal failed: {e}. Using original image.")
-            return img
+    def forward(self, x):
+        x = self.features(x)
+        x = self.classifier(x)
+        return x
 
 
 # Build training/validation data augmentation and preprocessing pipeline
@@ -255,23 +205,28 @@ def build_neural_transforms(train: bool) -> transforms.Compose:
     if train:
         return transforms.Compose(
             [
-                transforms.Resize((int(IMAGE_SIZE * 1.1), int(IMAGE_SIZE * 1.1))),
+                transforms.ToImage(),
+                transforms.Resize(
+                    (int(IMAGE_SIZE * 1.1), int(IMAGE_SIZE * 1.1)), antialias=True
+                ),
                 transforms.RandomCrop(IMAGE_SIZE),
                 transforms.RandomHorizontalFlip(p=0.5),
                 transforms.RandomRotation(10),
                 transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),
                 transforms.RandAugment(2, 10),
+                transforms.ToDtype(torch.float32, scale=True),  # Scales to [0,1]
                 transforms.ColorJitter(
                     brightness=0.1, contrast=0.1, saturation=0.1, hue=0.02
                 ),
-                transforms.ToTensor(),
                 transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)),
             ]
         )
+
     return transforms.Compose(
         [
-            transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
-            transforms.ToTensor(),
+            transforms.ToImage(),
+            transforms.Resize((IMAGE_SIZE, IMAGE_SIZE), antialias=True),
+            transforms.ToDtype(torch.float32, scale=True),
             transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)),
         ]
     )

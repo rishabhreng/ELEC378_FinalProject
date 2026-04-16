@@ -1,5 +1,3 @@
-# import a bunch of stuff
-import argparse
 import pandas as pd
 import torch
 from torch import nn
@@ -8,47 +6,88 @@ from lightning.pytorch.callbacks import (
     EarlyStopping,
     ModelCheckpoint,
     LearningRateMonitor,
+    BasePredictionWriter,
+    RichProgressBar,
 )
 from lightning.pytorch.loggers import TensorBoardLogger
-from lightning.pytorch.strategies import SingleDeviceStrategy, DDPStrategy
+from lightning.pytorch.cli import LightningCLI
 
 # import a bunch of stuff from our common module
 from classify_common import (
     FILE_PATH,
     SEED,
     RUNS_DIR,
-    ConvNeurNetwork,
+    CNN,
     ButterflyDataModule,
     get_submission_image_ids,
-    set_seed,
 )
+
+
+class CSVPredictionWriter(BasePredictionWriter):
+    """Callback to save predictions to CSV after completion."""
+
+    def __init__(self, output_path: str, datamodule):
+        super().__init__(write_interval="batch")
+        self.output_path = output_path
+        self.datamodule = datamodule
+        self.all_preds = []
+
+    def write_on_batch_end(
+        self,
+        trainer,
+        pl_module,
+        predictions,
+        batch_indices,
+        batch,
+        batch_idx,
+        dataloader_idx,
+    ):
+        """Collect predictions as batches complete."""
+        self.all_preds.extend(predictions)
+
+    def on_predict_end(self, trainer, pl_module):
+        """Save predictions to CSV when prediction finishes."""
+        if not self.all_preds:
+            return
+
+        try:
+            # Ensure data module is set up
+            if hasattr(self.datamodule, "setup"):
+                self.datamodule.setup("predict")
+
+            image_ids = get_submission_image_ids()
+            class_names = self.datamodule.class_names
+
+            # Convert class indices to class names
+            preds = [class_names[int(idx)] for idx in self.all_preds]
+
+            submission = pd.DataFrame({"ID": image_ids, "TARGET": preds})
+            submission.to_csv(self.output_path, index=False)
+            print(f"[✓] Saved {len(preds)} predictions to {self.output_path}")
+        except Exception as e:
+            print(f"[Error] saving predictions: {e}")
 
 
 class CNNButterflyClassifier(L.LightningModule):
     def __init__(
         self,
-        num_classes: int,
+        num_classes: int = 100,
         learning_rate: float = 5e-4,
         weight_decay: float = 1e-4,
         label_smoothing: float = 0.01,
         class_weights: torch.Tensor | None = None,
     ):
         super().__init__()
+        # Save hyperparameters but ignore class_weights since it's a constant, not hparam
         self.save_hyperparameters(ignore=["class_weights"])
-        self.cnn = ConvNeurNetwork(num_classes=num_classes)
-        self.learning_rate = learning_rate
-        self.weight_decay = weight_decay
-        self.label_smoothing = label_smoothing
+        self.cnn = CNN(num_classes=num_classes)
+        self.num_classes = num_classes
+        self.lr = learning_rate
+        self.wd = weight_decay
+        self.ls = label_smoothing
 
-        # add class weights to normalize for class imbalance
-        if class_weights is not None:
-            self.register_buffer("class_weights", class_weights)
-        else:
-            self.class_weights = None
-
-        # use cross entropy loss with class weights and optional label smoothing
         self.criterion = nn.CrossEntropyLoss(
-            weight=self.class_weights,
+            weight=class_weights,  # account for class imbalance
             label_smoothing=label_smoothing,
         )
 
@@ -81,18 +120,6 @@ class CNNButterflyClassifier(L.LightningModule):
         self.log("val_accuracy", accuracy, on_epoch=True, prog_bar=True)
         return loss
 
-    def test_step(self, batch, batch_idx):
-        x, y = batch
-        logits = self(x)
-        loss = self.criterion(logits, y)
-
-        preds = logits.argmax(dim=1)
-        accuracy = (preds == y).float().mean()
-
-        self.log("test_loss", loss, on_epoch=True)
-        self.log("test_accuracy", accuracy, on_epoch=True)
-        return loss
-
     def predict_step(self, batch, batch_idx):
         x, _ = batch
 
@@ -103,7 +130,7 @@ class CNNButterflyClassifier(L.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(
-            self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
+            self.parameters(), lr=self.lr, weight_decay=self.wd
         )
 
         # Smooth LR drop with cosine fn
@@ -114,220 +141,132 @@ class CNNButterflyClassifier(L.LightningModule):
         # )
 
         # Use ReduceLROnPlateau for better plateau handling
-        # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        #     optimizer,
-        #     mode='max',  # maximize accuracy
-        #     factor=0.1,  # reduce LR by 10% when plateau detected
-        #     patience=5,  # wait 5 epochs before reducing
-        #     min_lr=1e-7,
-        # )
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode="max",  # maximize accuracy
+            factor=0.1,  # reduce LR by 10% when plateau detected
+            patience=6,  # wait 3 epochs before reducing lr
+            min_lr=1e-7,
+        )
 
         # aggressive LR
-        scheduler = torch.optim.lr_scheduler.OneCycleLR(
-            optimizer,
-            max_lr=self.learning_rate * 10,
-            total_steps=self.trainer.estimated_stepping_batches,
-            pct_start=0.2,
-        )
+        # scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        #     optimizer,
+        #     max_lr=self.lr * 10,
+        #     total_steps=self.trainer.estimated_stepping_batches,
+        #     pct_start=0.2,
+        # )
         return {
             "optimizer": optimizer,
             "lr_scheduler": {
                 "scheduler": scheduler,
                 "monitor": "val_accuracy",
-                "interval": "step",
+                "interval": "epoch",
                 "frequency": 1,
             },
         }
 
-    # Log the learning rate at the end of each training epoch for monitoring
-    def on_train_epoch_end(self):
-        current_lr = self.optimizers().param_groups[0]["lr"]
-        self.log("learning_rate", current_lr, on_epoch=True)
+    # def on_train_epoch_end(self):
+    #     current_lr = self.optimizers().param_groups[0]["lr"]
+    #     self.log("learning_rate", current_lr, on_epoch=True)
+
+    def load_state_dict(self, state_dict, strict=True):
+        """Handle backward compatibility with old checkpoints that had class_weights."""
+        # Remove class_weights from old checkpoints (it was a constant, not a model parameter)
+        state_dict.pop("class_weights", None)
+        # Remove criterion.weight from old checkpoints (weights are passed at init, not saved)
+        if "criterion.weight" in state_dict:
+            state_dict.pop("criterion.weight", None)
+        return super().load_state_dict(state_dict, strict=strict)
+
+
+class ButterflyClassifierCLI(LightningCLI):
+    def add_arguments_to_parser(self, parser):
+        """Add custom CLI arguments for run management."""
+        parser.add_argument(
+            "-r",
+            "--run_name",
+            type=str,
+            default="cnn_butterflies",
+            help="Name of the run directory for checkpoints and logs",
+        )
+        parser.add_argument(
+            "-o",
+            "--output_path",
+            type=str,
+            default=str(FILE_PATH / "submission.csv"),
+            help="Output CSV path for predictions",
+        )
+
+    def after_instantiate_classes(self):
+        """Configure trainer, callbacks, and logger after classes are instantiated."""
+        super().after_instantiate_classes()
+
+        # Extract custom args from the subcommand namespace
+        subcommand_config = getattr(self.config, self.config.subcommand, None)
+        run_name = (
+            getattr(subcommand_config, "run_name", "cnn_butterflies")
+            if subcommand_config
+            else "cnn_butterflies"
+        )
+        output_path = (
+            getattr(subcommand_config, "output_path", str(FILE_PATH / "submission.csv"))
+            if subcommand_config
+            else str(FILE_PATH / "submission.csv")
+        )
+
+        run_dir = RUNS_DIR / run_name
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+        # Configure callbacks
+        early_stop = EarlyStopping(
+            monitor="val_accuracy",
+            patience=10,
+            mode="max",
+            verbose=True,
+        )
+
+        checkpoint = ModelCheckpoint(
+            dirpath=run_dir,
+            filename="best_cnn",
+            monitor="val_accuracy",
+            mode="max",
+            save_top_k=3,
+            save_last=True,
+        )
+
+        lr_monitor = LearningRateMonitor(
+            logging_interval="step",
+            log_momentum=True,
+            log_weight_decay=True,
+        )
+
+        # Setup datamodule to get class names for prediction writer
+        if hasattr(self.datamodule, "setup"):
+            self.datamodule.setup("fit")
+
+        pred_writer = CSVPredictionWriter(output_path, self.datamodule)
+
+        # Set callbacks with progress bar
+        self.trainer.callbacks = [
+            early_stop,
+            checkpoint,
+            lr_monitor,
+            pred_writer,
+            RichProgressBar(),
+        ]
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="CNN Butterfly/Moth Species Classifier Training/Prediction Script"
-    )
-    parser.add_argument("-r", "--run_name", type=str, default="cnn_butterflies")
-    parser.add_argument("-e", "--epochs", type=int, default=10)
-    parser.add_argument("-b", "--batch_size", type=int, default=32)
-    parser.add_argument("-lr", "--learning_rate", type=float, default=1e-3)
-    parser.add_argument(
-        "-d", "--device", type=str, default="cuda", choices=["cuda", "cpu"]
-    )
-    parser.add_argument(
-        "--devices",
-        type=str,
-        default="1",
-        help="Number of devices (e.g., 1, 2, or auto)",
-    )
-    parser.add_argument(
-        "--strategy",
-        type=str,
-        default="single_device",
-        choices=["single_device", "auto", "ddp"],
-        help="Lightning strategy",
-    )
-    parser.add_argument("-n", "--num-workers", type=int, default=4)
-    parser.add_argument(
-        "--precision",
-        type=str,
-        default="32-true",
-        choices=["32-true", "16-mixed", "16-true", "bf16-mixed", "bf16-true"],
-        help="Precision for training (default: 32-true for stability)",
-    )
-    parser.add_argument("-p", "--patience", type=int, default=10)
-    parser.add_argument("-w", "--weight_decay", type=float, default=1e-4)
-    parser.add_argument("-ls", "--label_smoothing", type=float, default=0.01)
-    parser.add_argument(
-        "-vs",
-        "--val_size",
-        type=float,
-        default=0.2,
-        help="Proportion of training data to use for validation (between 0 and 1)",
-    )
-    parser.add_argument(
-        "--ckpt_path",
-        type=str,
-        default=None,
-        help="Path to a checkpoint to start training from / predict with (optional)",
-    )
-    parser.add_argument(
-        "--output_path",
-        type=str,
-        default=FILE_PATH / "submission.csv",
-        help="Path to save the submission CSV file with predictions",
-    )
-    parser.add_argument(
-        "--no_train",
-        action="store_true",
-        help="Skip training and only run prediction using the best checkpoint from the specified run directory",
-    )
-    parser.add_argument(
-        "--no_predict",
-        action="store_true",
-        help="Skip prediction and only run training",
-    )
-
-    args = parser.parse_args()
-
-    if args.no_train and args.no_predict:
-        parser.error(
-            "Cannot specify both --no_train and --no_predict. At least one of training or prediction must be performed."
-        )
-
     torch.set_float32_matmul_precision(
         "medium" if torch.cuda.is_available() else "high"
     )
-    device = (
-        args.device if args.device == "cuda" and torch.cuda.is_available() else "cpu"
+
+    ButterflyClassifierCLI(
+        CNNButterflyClassifier,
+        ButterflyDataModule,
+        seed_everything_default=SEED,
     )
-
-    if args.devices == "auto":
-        devices = "auto" if device == "cuda" else 1
-    else:
-        try:
-            devices = int(args.devices)
-            if devices < 1:
-                parser.error("--devices must be >= 1")
-        except ValueError:
-            parser.error("--devices must be an integer or 'auto'")
-
-    # Resolve strategy based on device count and user choice
-    if args.strategy == "single_device":
-        # SingleDeviceStrategy only supports single device
-        if isinstance(devices, int) and devices > 1:
-            print(
-                f"Warning: single_device strategy only supports 1 device. Using strategy='auto' with {devices} devices instead."
-            )
-            strategy = "auto"
-        else:
-            strategy = SingleDeviceStrategy(
-                device=torch.device("cuda:0" if device == "cuda" else "cpu")
-            )
-    elif args.strategy == "ddp":
-        # DDP strategy for multi-device training
-        strategy = DDPStrategy(find_unused_parameters=True)
-    else:
-        # Let Lightning auto-detect (auto strategy)
-        strategy = "auto"
-
-    set_seed(SEED)
-
-    data_module = ButterflyDataModule(
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        val_size=args.val_size,
-        seed=SEED,
-    )
-    data_module.setup()
-
-    run_dir = RUNS_DIR / args.run_name
-    run_dir.mkdir(parents=True, exist_ok=True)
-
-    model = CNNButterflyClassifier(
-        num_classes=100,  # hardcoded for task
-        learning_rate=args.learning_rate,
-        weight_decay=args.weight_decay,
-        label_smoothing=args.label_smoothing,
-        class_weights=None if args.no_train else data_module.class_weights,
-    )
-
-    early_stop = EarlyStopping(
-        monitor="val_accuracy",
-        patience=args.patience,
-        mode="max",
-        verbose=True,
-    )
-
-    checkpointer = ModelCheckpoint(
-        dirpath=run_dir,
-        filename="best_cnn",
-        monitor="val_accuracy",
-        mode="max",
-        save_top_k=1,
-        verbose=True,
-    )
-
-    lr_monitor = LearningRateMonitor(
-        logging_interval="step", log_momentum=True, log_weight_decay=True
-    )
-
-    trainer = L.Trainer(
-        max_epochs=args.epochs,
-        accelerator=device,
-        devices=devices,
-        strategy=strategy,
-        callbacks=[early_stop, checkpointer, lr_monitor],
-        enable_progress_bar=True,
-        precision=args.precision,
-        logger=TensorBoardLogger(
-            save_dir=run_dir / "lightning_logs", name=args.run_name
-        ),
-    )
-
-    if not args.no_train:
-        trainer.fit(
-            model,
-            train_dataloaders=data_module.train_dataloader(),
-            val_dataloaders=data_module.val_dataloader(),
-            ckpt_path=args.ckpt_path if args.ckpt_path else None,
-        )
-
-    if not args.no_predict:
-        preds = trainer.predict(
-            model=model,
-            dataloaders=data_module.predict_dataloader(),
-            ckpt_path="best" if not args.no_train else args.ckpt_path,
-        )
-
-        image_ids = get_submission_image_ids()
-        preds = [data_module.class_names[pred[0]] for pred in preds]
-
-        submission = pd.DataFrame({"ID": image_ids, "TARGET": preds})
-        submission.to_csv(args.output_path, index=False)
-        print(f"Wrote submission file to {args.output_path}")
 
 
 if __name__ == "__main__":

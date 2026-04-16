@@ -1,5 +1,7 @@
-test_images/
-train_images/
+test_images
+train_images
+train_images_cropped
+test_images_cropped
 *.csv
 yolo_classification_data/
 runs/
@@ -7,3 +9,4 @@ lightning_logs/
 *.pt
 *.out
 __pycache__/
+launch.json
