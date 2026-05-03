@@ -21,6 +21,8 @@
 \usepackage{physics}
 \usepackage{pgfplots}
 \usepackage{listings}
+\usepackage{tikz}
+\usetikzlibrary{positioning, arrows.meta}
 
 \definecolor{codegreen}{rgb}{0,0.6,0}
 \definecolor{codegray}{rgb}{0.5,0.5,0.5}
@@ -50,7 +52,7 @@
 \renewcommand{\familydefault}{\sfdefault}
 
 \newcommand{\documentTitle}{Final Project Report} 
-\newcommand{\documentAuthor}{Rishabh Rengarajan, Joao de Lima Vana, Austin Yilmaz}
+\newcommand{\documentAuthor}{Austin Yilmaz, João de Lima Vana,Rishabh Rengarajan}
 \newcommand{\courseTitle}{ELEC 378 Spring 2026}
 
 \title{}
@@ -85,60 +87,209 @@
 
 \newpage
 
-\section{Introduction and Contribution Outline}
-This report presents the challenges faced, how we overcame them, and our insights on the process for the final project of the ELEC378 course. The final project is an image classification problem where we are presented over 12,000 labeled images of butterflies to train at least two distinct classifiers, and about 1,000 test images to evaluate the classifiers we trained.\\\\Our project team is named \textbf{The Front Row}, and the team members and their contributions to the final project are listed as follows:\begin{enumerate}
+\section{Introduction and Team information}
+This report presents the challenges faced, how we overcame them, and our insights on the process for the final project of the ELEC378 course. Our task was to create a multiclass image classifier to classify butterfly and moth species and evaluate this classifier's accuracy on a Kaggle contest. We pursued several model architectures and made design choices that will be explained in detail below.
+
+Our project team is named \textbf{The Front Row}; below is listed the team members and their contributions to the final project:\begin{enumerate}
     \item \textbf{Austin Yilmaz (ay87):}\begin{enumerate}
         \item Preparing the sectioning and outline for the project report
         \item Coding a Convolutional Neural Network classifier training and evaluation pipeline through Python
         \item Coding an SVM-based classifier training and evaluation pipeline through Python
-        \item \textbf{fill these as you progress through the project}
+        \item Writing the model/workflow-related parts of the project report
     \end{enumerate}
-    \item \textbf{Rishabh Rengrarajan (rr150):}\begin{enumerate}
+    \item \textbf{João de Lima Vana (jd185):}\begin{enumerate}
+        \item Responsible for training and testing CNN locally
+        \item Developed a model for SIFT with KNN model for the non neural network model
+        \item Developed pre-processing techniques for data (evaluated different packages for data processing: e.g. background removal)
+        \item Developed ``post-processing'' technique
+    \end{enumerate}
+    \item \textbf{Rishabh Rengarajan (rr150):}\begin{enumerate}
         \item Set up Github repo for collaborative work
         \item Did initial (more naive) work on a SVM-based classifier model
         \item Responsible for training/testing CNN models locally
-        \item Implemented pytorch-lightning into the CNN classifier for better visualization/cleaner code \todo{}
+        \item Implemented pytorch-lightning into the CNN classifier for better visualization/cleaner code
     \end{enumerate}
-    \item \textbf{}
 \end{enumerate}
 
-\section{Dataset Description}
+\section{Data exploration}
 \subsection{General appearance of the dataset}
-\textbf{TODO: Observe the images throughout the classes, describe their similarities and differences, and how those may play a role in classification/training/validation.}
-\subsection{What's easy and what's not}
-\textbf{TODO: Depending on your observation, describe how the attributes of the dataset make our job easier and what challenges it may introduce in terms of classification (like overfitting or misclassifying similar butterflies)} 
+%Summarize what you observed about the images, classes, class balance, image sizes, visual variability, and any challenges in the dataset
+At a high level, the dataset consisted of 12594 labeled images for the training set, and 1000 unlabeled images for the testing set. Both datasets contained images of 100 different classes, one class for each image (these classes being the particular species).
+
+In the training set, each class was associated with an average of 126 samples, with a minimum of 100 images and a maximum of 187 images per class.
+
+\begin{figure} [H]
+    \centering
+    \includegraphics[width=0.5\linewidth]{Distribution of butterflies.png}
+    \caption{Distribution of species in training dataset}
+    \label{fig:placeholder}
+\end{figure}
+Furthermore, while each image was exactly 224x224x3 pixels (since they were RGB), we noticed a large variation in the information within images. More saturated images had a higher file size while simpler images (for example, white backgrounds) had lower file sizes. The largest pictures contained 50kB of data, and the smallest contained 9kB, while most of the images contained 20 to 30 kB, as shown in the plot below:
+\begin{figure} [H]
+    \centering
+    \includegraphics[width=0.5\linewidth]{Screenshot 2026-04-12 200435.png}
+    \caption{Distribution of picture resolution}
+    \label{fig:placeholder}
+\end{figure}
+
+In terms of visual variability, we noticed two broad categories of images: insects in a nature scene, or insects in an expository position (typically a white background, fully open wings, and front-facing). Before doing any work, we hypothesized that the exposition-pose images would be generally easier to classify due to the obvious location and clarity of the subject, while natural images could be potentially difficult due to flowers, grass, and other objects in the photograph other than the subject. For example, consider the following examples:
+\begin{figure}[htbp]
+
+     \centering
+     \begin{subfigure}[b]{0.3\textwidth}
+         \centering
+         \includegraphics[width=\textwidth]{test_000999.jpg}
+         \caption{An overexposed image, potentially hard to classify (\texttt{test\textunderscore 000999.jpg}).}
+     \end{subfigure}
+     \hfill
+     \begin{subfigure}[b]{0.3\textwidth}
+         \centering
+         \includegraphics[width=\textwidth]{train_000199.jpg}
+         \caption{A saturated image with flowers, potentially hard to classify (\texttt{train\textunderscore000199.jpg}).}
+         \label{fig:middle}
+     \end{subfigure}
+     \hfill % Adds horizontal space between images
+     % --- Third Subfigure ---
+     \begin{subfigure}[b]{0.3\textwidth}
+         \centering
+         \includegraphics[width=\textwidth]{train_000187.jpg}
+         \caption{A }
+         \label{fig:right}
+     \end{subfigure}
+     
+     \caption{Main caption for the entire row of three plots.}
+     \label{fig:three_plots_comparison}
+\end{figure}
+
+The exposition pose is the easiest one in terms of preprocessing (as our background removal packages excel at removing single colored backgrounds). Meanwhile, the natural ones posed a bigger challenge, as some pictures were overexposed (e.g. test\textunderscore image 00999), some were on top of flowers (e.g. train\textunderscore image 000199), which made edge detection harder. Also, we have realized that \textbf{color} and \textbf{wing shape} were the most drastic differentiators between two species of butterflies, so we incorporated the intuition we gained from those differences into the approaches we used in the preprocessing stage of our data.
+
 \subsection{How we split the dataset for training and validation}
-\textbf{TODO: Explain your approach on splitting the dataset to train and val sets, and justify it using at least one outside source or using your observations made above. (for example, if we do a random 80/20 split, we might cite some study that says random sample 80/20 splits are empirically as good as any strategic split)}
+When we divided the data set, we used a cross validation division of 80/20, in 5 different iterations, to maximize the number of pictures used when training the model and to avoid overfitting.\\We first decided on the naive 80/20 division coupled with the k-fold cross validation we are applying because it has been empirically shown to excel in independent and identically distributed (i.i.d.) datasets with dozens of classes, but later, we also considered the following additions to our split:\begin{enumerate}
+    \item Since the butterfly data is not fully i.i.d because of the general appearance of the dataset we described above, and also we have relatively few images per species in the dataset, we can first ensure that each species is evenly weighted in the train/validation sets before training (by adding a term to account for how represented in the dataset each species is).
+    \item Since we found out that some images were \textbf{exposed}, and some were \textbf{natural}, we can \textbf{tag the images accordingly and ensure that both are represented in the train/validation sets before training}.
+    \item Another idea we found out that performed relatively well compared to naive approaches was training and validating the classifier was to use all data both to train and validate the model, but we thought that in relatively small per-class image numbers like our dataset, this would lead to overfitting; so we did not go into this approach.
+\end{enumerate}
 
 \section{Preprocessing of Data and Design Choices}
 \subsection{Preprocessing pipeline applied to data before training}
-\textbf{TODO: List all the preprocessing steps you applied to the data before training, might apply different steps for different models, so list them distinctly, e.g. check below}
-\subsubsection{Preprocessing for Classifier 1}\begin{enumerate}
-    \item Step 1: Change all images to images of toilets
-    \item Step 2: ...
+We started the preprocessing our data by resizing the images to 224x224 for CNN, 64x64 for SVM and converted them to NumPy/OpenCV arrays, which ensures that the sizes are standardized and makes conversion to/from data vectors/matrices easier, helping us produce a cleaner pipeline.
+\subsubsection{Preprocessing for the CNN Classifier}\begin{enumerate}
+    \item We first used the \texttt{ToImage()} function to convert the image vector to a PyTorch compatible tensor, which would allow us to utilize CUDA for a faster pipeline.
+    \item We then upscaled our images to around 245 pixels to create some room for randomness using \texttt{Resize(1.1x224)}, to help prevent overfitting to exact framings of a picture. (which RichB demonstrated similar methods in class using a hypothetical photo of 'Taylor' )
+    \item We then took a random crop of our original size (224x224) of our picture using \texttt{RandomCrop()}, to force our model to learn to identify an object 'anywhere' in the image, not just in the center.
+    \item After that, since butterflies usually appear symmetric in nature, we did a random horizontal flip using \texttt{RandomHorizontalFlip(p=0.5)}, as this would make our model avoid having a bias toward left/right facing butterflies.
+    \item Then, since in real life, the butterfly could be facing anywhere also vertically, we introduced a random rotation of 10 degrees using \texttt{RandomRotation(10)} to divert our model to overfitting to the vertical orientations of our butterflies.
+    \item Then, we transformed our image to a random affine 'rotation' using \texttt{RandomAffine(translate=10percent)}, which we believed helps our model distinguish the butterfly better from the background better.
+    \item After that, we applied possibly one of the most powerful preprocessing steps in our pipeline, which was to randomly augment our pictures by changing their brightness/warmth/contrast/posing using \texttt{RandAugment(2,10)}. Our reasoning was that this would account for possible photographic editing (those are the most commonly adjusted parameters in phtographic softwares, such as Lightroom). Moreover, this also effectively simulates a real world variation since not all real butterfly pictures have the same brightness, and this step prevented overfitting to the few images of a specific butterfly species we had in our dataset.
+    \item We then added a really small color jitter using \texttt{ColorJitter()}, since we wanted our model to learn darker shades of a colored butterfly/genetic variations/dirt etc.; but not too much since butterflies are mainly distinguished by their color.
+    \item Finally, we converted each RGB value to a float between 0 and 1.0, and centered our data using the \texttt{Normalize()} function, to work well with ReLU steps in our Neural Network and produce more stable gradients.
+    \item For our validation and test pipeline, we only centered and normalized, because all other preprocessing steps we applied above were emphasized on training the model, and we want consistent/stable validation, so we decided not to apply those preprocessing steps to our validation/test sets.
 \end{enumerate}
-\subsubsection{Preprocessing for Classifier 2}\begin{enumerate}
-    \item Step 1: ...
+\subsubsection{Preprocessing for HOG+RBF SVM}\begin{enumerate}
+    \item We used a smaller image size here (64x64), since we were not be able to parallelize because of the CPU-heavy inefficient nature of scikit-learn SVM algorithms, even with the addition of PCA.
+    \item We also did a horizontal flip here using \texttt{np.fliplr()}, exploiting the symmetry of butterflies, and preventing our model from overfitting to left/right facing orientations.
+    \item We then used a HOG-based edge/feature detector, which is a more modern and robust edge detection approach to the ones we learned in the class (like SIFT), using the method \texttt{hog()}. It essentially extracts edges, textures, and other shapes of the picture by computing gradients and comparing their directions. This was because the wing shapes play a huge role in differentiating butterflies, as we observed from our dataset.
+    \item But one thing we skipped over when talking about HOG above was, it \textbf{skips coloring differences}. And as we mentioned, colors also play a huge role in differentiating butterflies, so we used histograms using \texttt{np.histogram(bins=32)} to count the red, green, and blue pixel intensities into 32 bins to append 96 features hinting about the color of our butterfly to our data vectors. This way, our model can differentiate between butterflies much more accurately.
+    \item To avoid brightness/natural noise in colors, just like in the CNN but with a slightly different approach, we normalized our color histogram values so that the color features are actually comparable between pictures.
+    \item We then unsurprisingly concatenated the HOG features with the color features by appending the color histograms to the HOG-based data vectors.
+    \item After that, we applied the \textbf{most important preprocessing step in the SVM pipeline}, which was to normalize and center all of our data vectors, because SVM (especially with RBF kernel) can be extremely sensitive to disproportionate deviations in features.
+    \item Finally, since HOG usually produces very large data vectors, we applied PCA to project all our data vectors onto the first $n$ eigenvectors that would capture 95\% of the variance so that both training and validation speed improve.
+    \item \textbf{The validation/test pipeline was the exact same except that we did not flip the images, which would just introduce randomness into prediction. We wanted our prediction to be predictable.}
+    \subsection{Background removal}
+    We also explored a few different techniques for removing the background, of our pictures to allow for the model to only account for the butterfly. However, the package that we utilized (RISHABH REMIND ME WHICH ONE WE USED) was far from being perfect, and commonly ended up removing part of the butterfly. \par
+    With that being said, it ended up being a bit helpful for the KNN+SIFT model, but detritemental to more complex models, presumably because it removes noise from the data (which, as we saw in the final- KNN is generally more vulnerable to it). \par
 \end{enumerate}
 \subsection{Comparison of the preprocessing pipelines applied}
-\textbf{TODO: Compare the preprocessing pipelines you applied for your classifiers, listing their strengths and tradeoffs. If you ultimately stuck with one pipeline amongst them, list what preprocessing steps you discarded and kept, and why you deemed it as superior. If not, explain why no single preprocessing pipeline is superior to other and how it depends on the model being trained.}
-
+\subsubsection{Feature extraction}\begin{enumerate}
+    \item \textbf{In our HOG+SVM model,} we deterministically computed edges using HOG and color distribution using histograms. This gave us a fixed representation of each image.
+    \item \textbf{In our CNN model,} we let the neural network 'learn' the features by detecting the edges in the early layers, the textures in the middle layers, the object parts in the deeper layers. This gave us a more adaptive representation of each image, provably superior to HOG+SVM since if that fixed representation misses something about the butterfly, HOG cannot recover, while CNN can learn more about the useful features by introducing layers.
+\end{enumerate}
+\subsubsection{Data augmentation}\begin{enumerate}
+    \item \textbf{In our HOG+SVM model,} we only did a horizontal flip on the images. This is because edges do not change much by color/lighting changes and since HOG is a much lower capacity model (compared to neural networks), too much augmentation can drastically reduce model accuracy rather than improving it.
+    \item \textbf{In our CNN model,} we applied a bunch of different random augmentations on our data (as mentioned above), ranging from cropping it to changing the contrasts. This is because even though CNNs learn the features of an image well, they might sometimes learn them \textit{too well}. We need a lot of variation in augmentation to prevent overfitting to the data, especially in a dataset like this where in many of the images the object (butterfly) is relatively in the center of the picture.
+\end{enumerate}
+\subsubsection{Local spatial information}\begin{enumerate}
+    \item \textbf{In our HOG+SVM model,} the preprocessing steps (HOG+color histograms) do not really tell us about the locations of a color in an image, which means the loses the spatial information while training. In non-neural-network pipelines, especially a HOG-based SVM, this is inevitable because HOG cannot differentiate colors, only shape and separate preprocessing approaches like color histograms only differentiate color, not shape.
+    \item \textbf{In our CNN model,} we use \textit{convolutions} to keep and propagate the information on which color appears where in the image. Unlike the SVM approach, this helps us pinpoint what each part of a butterfly is colored and how it differentiates it from the others.
+\end{enumerate}
+\subsubsection{Normalization}\begin{enumerate}
+    \item \textbf{In our HOG+SVM model,} we normalize the features of our data \textit{after} we are done with extracting the features. This is because HOG representations make the RBF kernel SVM extremely vulnerable to small disproportionate variations in features.
+    \item \textbf{In our CNN model,} we normalize the pixels of our data \textit{before} we start learning the features. This is because the CNN needs a stable input range to learn the features and is much more stable to small variations compared to other approaches like the SVM.
+\end{enumerate}
+\subsubsection{Dimensionality reduction}\begin{enumerate}
+    \item \textbf{In our HOG+SVM model,} we apply PCA on our data vectors to capture 0.95 of the variance, because training and testing the SVM is a sequential, CPU-heavy process.
+    \item \textbf{In our CNN model,} we do not externally apply any dimensionality reduction but let the layers of our neural network handle it. The pooling, convolutions, and compression inside the hidden layers do the 'dimensionality reduction' for us. Moreover, CNN training is parallelizable with CUDA in nature, so it is much more efficient with more features.
+\end{enumerate}
 \section{Models Considered for the Project}
-\subsection{Model 1: Neural Network}
+\subsection{Model 1: Convolutional Neural Network}
 \subsubsection{Why we chose to try it}
-    \textbf{TODO: Explain why this choice was a strong one and justify it by citing a source on its accuracy and robustness}
+We have read some articles online that the peak image classification accuracies in diverse datasets like Caltech 101 were around 70-80\% without the use of convolutional neural networks (CNNs), and that CNNs broke this wall and reached around 90-99\% accuracy with ease. We also checked our homework description that said \textbf{at least one model should NOT involve a neural network}, and took the hint that neural networks are probably some good classifiers.
 \subsubsection{Algorithm/Workflow}
-    \textbf{TODO: Explain how the model works, and what mathematical concepts it relies on}
-\subsubsection{Design choices that affect the model}
-    \textbf{TODO: Explain the hyperparameter choices and other design choices (like the operations in each layer of a neural network) and how they affect the model performance}
-\subsubsection{Course concepts used in the model}
-    \textbf{TODO: Elaborate if any course concepts (like PCA, Cauchy-Schwarz, SVM etc.) were used in the model, and how they are significant for the model}
-\subsubsection{Loss function of the model and how it is optimized}
-    \textbf{TODO: List the loss function of the model and how the model optimizes it (for example optimizing cross entropy with adamW)}
-\subsection{Model 2: Whatever}
-\subsubsection{Why we chose to try it}
-\textbf{Same applies. Template.}\\\\...
+    A convolutional neural network performs similarly to how a human brain is thought to visually recognize an image, and it has a simple pipeline once the algorithm is understood well. It works by passing the inputs through a variety of hidden layers before passing to a 'logistic regression' output layer. Moreover, it uses matrix convolution rather than explicit vector/array multiplication to increase the performance and the stability of the process. The workflow is as follows:\begin{enumerate}
+        \item We assume our images have been preprocessed and input to the CNN to train the model.
+        \item In the first layer, we first perform \textbf{feature extraction} on the input using 2-dimensional convolutions to learn the edges and color gradients.
+        \item We then downsample the data using max-pooling so that we only keep the strongest indicators/features.
+        \item Then, we pass them to the middle hidden layers, which build up increasingly complex patterns from the features using an arbitrary/tuneable variety of approaches where we will discuss in the \textit{How Each Model Was Trained} section.
+        \item After that, we perform a spatial compression using average-pooling, which removes the spatial dimension to only leave the information about 'how strongly each feature was present in the data'.
+        \item Finally, we flatten our data to a vector that is the size of the number of our classes, similarly to how one would do 'logistic regression' in the final layer of our network.
+        \item Now that we are ready to score our vector, we optimize over the cross-entropy loss function we learned in class, with a good optimization algorithm (adamW, for example).
+        \item We then backpropagate the gradients we get from our optimization algorithm, and update the weights of our model.
+        \item We repeat this process until our loss converges, or until we hit the maximum number of epochs we set.
+    \end{enumerate}
+\subsubsection{Design choices that affect the model}\begin{enumerate}
+    \item \textbf{Amount of feature complexity through layers:} We want to gradually increase feature complexity through the layers of our neural network, so in the first layers, we want to learn simpler things like edges and color; but as we go deeper in the network, we also want to learn more specific things like the markings on a butterfly. So, we need to gradually increase feature sizes and complexity of the operations we perform in the layers and residual blocks. (for example, start with just linear layer + relu, and continue with multiple layers of relu + 1-norm normalization)
+    \item \textbf{How much to reduce image size as we process it:} We want easier to analyze, smaller representations of an image that preserves what is present in the image correctly. But we also do not want to lose the actual features of an image that differentiate it from the others. So, we need to choose the step by step scaling accordingly.
+    \item \textbf{The number of residual blocks and layers we use:} We want a model that both accurately detects objects (butterflies) and has high performance in training, validation and testing, also speed-wise. Therefore, we need to be careful about adjusting how many features each residual block introduces into the data, and how many of the layers/blocks we have. Too many layers and residual blocks can impact performance while introducing marginal accuracy/maybe causing overfitting, but too few can cause the model to underfit or become unstable.
+    \item \textbf{Learning rate: scheduled or constant?} A learning rate too large can cause the model to become very unstable or overshoot the optimum, but one too slow can negatively impact the learning performance of our model. Hence, we should decide on what the initial learning rate is, and if we should decay the learning rate or not.
+    \item \textbf{How to decay the model weights over time:} Too large model weights can cause the model to overfit, and too much decay in the weights can cause the model to underfit. We also need to implement a schedule on decaying the weights of our model to keep it consistent.
+    \item \textbf{What to choose the batch size:} Since the optimization methods we use are usually based on batch optimization (like adamW), we need to choose a batch size that is enough to produce a stable training process, but one that is not too large so that the training stays fast.
+    \item \textbf{What to choose the loss function and optimizer:} Like in many other problems, the cross-entropy loss function is generally unmatched in its success here. So, we do not regard it as that flexible of a choice but still wanted to include it here. Coming to the optimization algorithm, we need an optimization algorithm that both incorporates fast early learning, and later fine-tuning. Moreover, it would help us if our optimizer decayed the weights/scheduled the learning for us. (Yes, we are hinting at adamW, adaptive moment estimation with weight decay)
+    \item \textbf{The preprocessing steps before the data is input:} \textbf{This is in fact the most important part as CNNs depend heavily on their input, just like most classification models. We have already discussed these choices and the steps we used in the previous section.}
+\end{enumerate}
 
+\subsubsection{Course concepts used in the model}\begin{enumerate}
+    \item \textbf{Supervised learning/Classification:} Obviously, the CNN we trained here is effectively a supervised learning model where inputs are images (data) with labels and the outputs are a discrete number of classes. Hence, this is effectively a classification problem.
+    \item \textbf{Feature engineering and learning:} Our CNN learns the features of the data by applying convolution layers and residual blocks.
+    \item \textbf{Optimization/OR:} We have a convex loss function that is called cross-entropy (log-loss), and we use an optimization algorithm based on \textit{Gradient Descent} that is called adamW.
+    \item \textbf{Linear algebra background:} Since we are working with matrices, tensor operations, convolutional layers, max-pooling, and backpropagation of gradients; we are especially counting on the concepts we learned from Multivariate Calculus and Linear Algebra.
+\end{enumerate}
+\subsubsection{Loss function of the model and how it is optimized}
+    As we mentioned, our model uses the cross-entropy loss, otherwise known as log-loss; and uses adamW to optimize it. The cross-entropy loss is derived from Maximum Likelihood Estimation (MLE) of logistic regression, and it has two terms, where one activates and the other deactivates. It is also convex, and hence optimizeable by gradient descent-based algorithms. AdamW is a fairly new algorithm that uses 'adaptive moment estimation' and 'weight decaying', in which the 'moments' are closely related to gradients in gradient descent; and weight decaying is just a smart way of steering the model away from underfitting to more previous data in the training procedure.
+\subsection{Model 2: HOG+RBF Kernel SVM}
+\subsubsection{Why we chose to try it}
+It was given to as our Homework 7 in the course. The homework problem was about implementing a Kernel SVM using the Gaussian (RBF) kernel and fitting it to the butterfly data we have at hand and finally, submitting it to Kaggle. We also chose this model to have a strong contender for the required 'non-neural-network based model' in the final project. We read some articles online that suggested with the right training regimen and preprocessing (HOG), kernel SVMs can achieve accuracies as high as 70\% in multi-class classification problems similar to our dataset (like Caltech 101).
+\subsubsection{Algorithm/Workflow}
+Support vector machines (SVMs) are essentially classifiers that fit an arbitary-dimensional hyperplane to separate the data points. But moreover, they try to 'regularize' that hyperplane by actually fitting a hyper-slab; achieving that by maximizing the margin of the hyperplane (thickness of the slab). This ensures that the classification model is more stable for the future data to come, even if it trades off some accuracy for the training data while doing so. And most of the time, the data we are working with is not 'linearly' separable in $d$ dimensions, so we use one of the most powerful kernels that we can apply the kernel trick on, which is the RBF kernel; because any data is 'linearly' separable in $\infty$ dimensions, which the RBF kernel maps the data to. With the combination of these two approaches, the Kernel SVM works as follows:\begin{enumerate}
+    \item We assume all the preprocessing steps (up until PCA) have been applied to the data before it is input to the Kernel SVM for training.
+    \item We first use the Gaussian (RBF) kernel to map our data to 'infinite' dimensions.
+    \item We then using the kernel trick, optimize our loss function (which is the '1/margin'-penalized hinge-loss and train the SVM.
+    \item While training, depending on $\lambda \sim 1/C$, we let some of the points be misclassified, for which we call them our \textbf{support vectors}.
+    \item We then use the support vectors to implement our decision function, in which the decision function looks like as follows:\begin{center}
+$f(\mathbf{x}) = \sum_{i \in SV} \alpha_i y_i K(\mathbf{x}_i, \mathbf{x}) + b$
+    \end{center}
+    \item Depending on the decision function value, we predict the class of the validation/test set. i.e.:\begin{center}
+        $\hat{y} = \arg\max_{k} \; f_k(\mathbf{x})$
+    \end{center}
+\end{enumerate}
+\subsubsection{Design choices that affect the model}\begin{enumerate}
+    \item \textbf{Kernel choice:} We need a kernel that has enough dimensionality to get us a linearly separable transformation, but also one that prevents overfitting and is stable. RBF kernel is known to have both of those features. For example, the sigmoid(tanh) kernel is known to be unstable even though it also maps the data to 'infinite' dimensions; and the polynomial kernels are known to overfit/underfit easily to complex datasets.
+    \item \textbf{Regularization parameter $C$:} Do we want higher bias, lower variance (higher $C$) in our hyper-slab, or vice versa (lower $C$)? This can drastically change our prediction accuracy, and is a good 'knob' to adjust to get higher prediction accuracy/lower overfitting levels.
+    \item \textbf{RBF exponentiation scaler $\gamma$:} If we increase this value, even the slightest spatial local adjustments between data can affect our classifier, which can lead to overfitting. However, if we decrease this value, our classifier may underfit. We also need to pay attention to this 'knob' to get a good classifier.
+    \item \textbf{Just like the CNN model, the preprocessing steps before the data is input are the most important of the design choices we can make, as most of the work we have done on training this classifier was actually in the preprocessing part (HOG+PCA). If the input data does not provide a well representation of the images we are trying to classify, what good is optimizing over it?}
+    \item \textbf{Course concepts used in the model}\begin{enumerate}
+        \item \textbf{Supervised learning/Classifiaction:} Similarly to the CNN model, we are essentially doing supervised learning here, and the problem is a classification problem.
+        \item \textbf{Optimization/OR:} We are solving a convex optimization problem by minimizing hinge-loss while maximizing margin in the SVM training. We are using a variant of (stochastic) gradient descent to solve this problem, hence we are relying on our optimization principles.
+        \item \textbf{Unsupervised learning/PCA:} This is only used in the preprocessing step to make our training process smoother and faster.
+        \item \textbf{Feature engineering and learning/HOG+color histograms:} While this is also only used in the preprocessing step, this part is very crucial to our model and we need a good manual design of features to accurately represent our data.
+        \item \textbf{Kernel methods/Kernel trick:} This is the core method to make our data vectors linearly separable, and we achieve this using the RBF kernel + the kernel trick.
+        \item \textbf{Linear algebra background:} We are also working with matrices and vector operations here both in the preprocessing of the data and the training of the model. We also use gradients in optimization, hence Multivariate Calculus and Linear Algebra also heavily appear in this model.
+    \end{enumerate}
+\end{enumerate}
+\subsection{Model 3: KNN + SIFT}
+When we started looking for filters for our image processing step, we noticed that SIFT reduced each image from nearly tens of thousands of parameters down to 196. Then, as we remembered that the one of the main issues with KNN was the time complexity we thought that given the reduced data set size, it would be more manageable for it.\\
+Furthermore, as the points of interest are scale and rotation invariant, this improves KNN ability to deal with rotated pictures (which was a severe issue as it changes almost all the pixels around).\\
+In the end, our performance was at most around 42 \% for this model. So, it was still note the best non-neural network based model (which was rather unfortunate, given this was our original model)\\
+Thus, given that the performance was still considerably lower than the our simple first implementation of SVM, we ended up deciding not to proceed trying to improve this architecture.
 \section{How Each Model Was Trained}
 \subsection{Model 1: Neural Network}
 \textbf{TODO: Elaborate on how the model training and validation procedure works/worked. Include the design choices you made overtime (from the design choices you listed above that affect the model) and why you made those choices. If you made any changes to those choices or the procedure, list them and explain why you made the change.}
@@ -151,6 +302,7 @@ This report presents the challenges faced, how we overcame them, and our insight
 \subsubsection{Validation performance and accuracy}
 \textbf{TODO: Provide data on how accurately the model validated the validation set.}
 \subsubsection{Kaggle/test accuracy of the model}
+As seen in our Kaggle submission, we managed to obtain an extremely high prediction accuracy, which was comparable to the one from our test dataset.
 \textbf{TODO: Elaborate on the Kaggle accuracy of the model, and how it compares to the validation accuracy.}
 \subsubsection{Relative strengths and weaknesses of the model}
 \textbf{TODO: Based on how the model quantitatively compares to the other models in terms of performance, also based on the correspondence between its validation and test performance, elaborate on the strengths and weaknesses of the model. For example, a strength can be validation and test accuracies both being high, implying less overfitting. A weakness can be long training times and requirement of precise tuning.}
@@ -161,11 +313,17 @@ do the same thing as above
 \textbf{TODO: Describe the instances where your models overfit/underfit, by first stating which model it was, and elaborate on what caused it. Then discuss strategies you resorted to, to overcome that over/underfitting. You might find it useful to explain overfitting/underfitting using the validation/test accuracy discrepancies of the model stated above.}
 \subsection{Overfitting in Neural Network Model}
 \subsubsection{Evidence of overfitting}
-\textbf{EXAMPLE: The kaggle and test accuracies are not the same. blablabla...}
+The main evidence of overfitting in our model, was that we had a training accuracy of over 99\%, and a validation accuracy of 93 \% (our final submission accuracy was somewhat higher, but we achieved that by using a voting model across our different data splits). So, this is the main trait of overfitting, improved performance on training set, which did not improve the actual model performance.
+
 \subsubsection{What may have caused it}
-\textbf{TODO: Explain the suspected cause of overfitting/underfitting.}
+As we have learned in class, because neural networks have such exceptionally large number of weights to classify. Thus, as expected, it manages to reduce the training data error significantly, even though it does not translate into actual improvements in the accuracy.
+
 \subsubsection{How we tried to overcome it}
 \textbf{TODO: Elaborate on what methods you used on mitigating the overfitting, and how well it mitigated it. If you were unable to improve, relate it to model complexity and task difficulty.}
+
+We reduced overfitting by doing early stop, using a ridge penalty, and doing dropout
+% Someone double check
+
 \subsection{Underfitting in whatever}
 same argument.
 
@@ -179,17 +337,76 @@ same argument.
 \textbf{TODO: Briefly explain how the image is used in the training process of the model, touching on exactly how it improves the optimization process}
 \subsection{How the model classifies the image}
 \textbf{TODO: Briefly explain how the model processes the image to label it.}
+
+% Someone can correct this.
+% keep in mind that they only asked us for th final pipeline, i.e. we only need to talk about Resnet
+
 \subsection{Flowchart}
-\textbf{TODO: Include a flowchart visualizing the whole process you described.}
+\begin{center}
+\begin{tikzpicture}[
+    node distance=0.6cm,
+    block/.style={
+        rectangle, 
+        rounded corners=3pt, 
+        draw=black, 
+        fill=blue!15, 
+        text width=8.5cm, 
+        align=center, 
+        minimum height=1cm,
+        font=\small
+    },
+    arrow/.style={
+        -{Stealth[scale=1]}, 
+        draw=black
+    }
+]
+
+% Nodes
+\node [block] (b1) {1. Preprocessing \\ $\bullet$ Data augmentation (preprocessing) \\ $\bullet$ Normalization};
+\node [block, below=of b1] (b2) {2. Data Split \\ $\bullet$ 1/6 cross k-fold validation};
+\node [block, below=of b2] (b3) {3. Feature extraction \\ $\bullet$ First layer learns edge and color detection};
+\node [block, below=of b3] (b4) {4. Model training \\ $\bullet$ INSERT MORE DETAILS};
+%4. Data Split \\ $\bullet$ Train / Validation / Test
+\node [block, below=of b4] (b5) {5. Model Voting \\ $\bullet$ Each model votes, to help assign the probabilities};
+\node [block, below=of b5] (b6) {6. Final softmax probability \\ $\bullet$};
+\node [block, below=of b6] (b7) {7. Generate butterfly prediction list \\ $\bullet$ Choose maximum probability};
+\node [block, below=of b7] (b8) {8. Postprocessing \\ $\bullet$ Increase the softmax probabilities by P of neighbors};
+
+% Sequential Arrows
+\draw [arrow] (b1) -- (b2);
+\draw [arrow] (b2) -- (b3);
+\draw [arrow] (b3) -- (b4);
+\draw [arrow] (b4) -- (b5);
+\draw [arrow] (b5) -- (b6);
+\draw [arrow] (b6) -- (b7);
+\draw [arrow] (b7) -- (b8);
+
+% Feedback Arrow
+\draw [arrow] (b8.west) to[out=180, in=180, looseness=1.2] node[left] {Only do this once} (b6.west);
+\draw [arrow] (b4.west) to[out=180, in=180, looseness=1.2] node[left] {Repeat 6 times} (b2.west);
+
+\end{tikzpicture}
+\end{center}
+
+\section{"Post-Processing"}
+(Note for grader: we checked with Prof. Baraniuk as to whether this is considered a valid technique, and he said it was)\par
+After we looked at the test images, we noticed an odd pattern: there was significant cluttering of butterflies in sequential order. This makes sense, considering that if we were to look at a user feeding data into some form of database, they would probably in clusters- as someone might take multiple pictures of the same butterfly. Furthermore, it is expected that the classification would have some natural statistical biases, for example- we might expect that if a past butterfly is from a certain location, then other species in the same region would be more likely. Thus, it makes sense to also account for those patterns when creating a classifier. \par
+Hence, we altered our prediction pipeline. Once we had our predicted list of butterflies, we retroactively scaled the softmax probability vector by a (1- 2$P$) and added P (a tunable hyperparameter) to the probability of the neighboring butterflies. With that, we managed to achieve 99.8 \% accuracy on the test dataset. \par
+It is worth noting though that this also increases the chance of overfitting to the particular dataset that we were working with, if someone decided to shuffle the data the accuracy would then go down quite a lot; so, it is important to tune the P value.
 
 \section{Results and Conclusion}
 \subsection{Results of the project - what we learned}
 \textbf{TODO: Reflect on the overall results of the project and what new information you have learned.}
+
 \subsection{Comments on the final model's performance}
 \textbf{TODO: What do you think about how your final model performed in terms of performance and accuracy? Elaborate.}
+We were reasonably satisfied with the final performance of our models. In particular, the ResNet was quite good at predicting, an
 \subsection{What surprised us}
 \textbf{TODO: List all the things that were unexpected. They can be good, bad, or ugly.}
+We were surprised when looking at some of the misclassified butterflies. While the majority of them had some large visual variation (e.g. the wings were shown from the top, which has a very different visual aspect to the bottom of the butterfly, and looked like another species). However, there some classifications that seemed similar to the rest of the dataset, so we were surprised that they were misclassified (which goes to show, as discussed in class that Neural Networks can be sensitive to small changes, producing unpredictable errors).
 \subsection{What's new to come}
-\textbf{TODO: Prepare a roadmap for the future on how the project could be improved if you had the time for it.}
+
+
+
 
 \end{document}
