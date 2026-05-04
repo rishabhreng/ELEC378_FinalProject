@@ -288,8 +288,9 @@ $f(\mathbf{x}) = \sum_{i \in SV} \alpha_i y_i K(\mathbf{x}_i, \mathbf{x}) + b$
 \subsection{Model 3: KNN + SIFT}
 When we started looking for filters for our image processing step, we noticed that SIFT reduced each image from nearly tens of thousands of parameters down to 196. Then, as we remembered that the one of the main issues with KNN was the time complexity we thought that given the reduced data set size, it would be more manageable for it.\\
 Furthermore, as the points of interest are scale and rotation invariant, this improves KNN ability to deal with rotated pictures (which was a severe issue as it changes almost all the pixels around).\\
-In the end, our performance was at most around 42 \% for this model. So, it was still note the best non-neural network based model (which was rather unfortunate, given this was our original model)\\
-Thus, given that the performance was still considerably lower than the our simple first implementation of SVM, we ended up deciding not to proceed trying to improve this architecture.
+In the end, our performance was at most around 42 \% for this model. So, it was still not the best non-neural network based model (which was rather unfortunate, given this was our original model)\\
+We initially were considering other ways to improve our model. However, we ran into a few issues, the most important one is that SIFT does not account for any form of color, which is quite helpful for classifying butterflies. Moreover, when we started looking into other possible filters, almost all of them increased the image complexity- which made KNN very inefficient at classifying.
+Thus, given that the performance (at best around 40\%) was still considerably worse than the our simple first implementation of SVM, we ended up deciding not to proceed any further with this architecture.
 \section{How Each Model Was Trained}
 \subsection{Model 1: Neural Network}
 \textbf{TODO: Elaborate on how the model training and validation procedure works/worked. Include the design choices you made overtime (from the design choices you listed above that affect the model) and why you made those choices. If you made any changes to those choices or the procedure, list them and explain why you made the change.}
@@ -299,7 +300,13 @@ Thus, given that the performance was still considerably lower than the our simpl
 \subsection{Model 1: Neural Network}
 \subsubsection{Training performance and robustness}
 \textbf{TODO: Explain how RELATIVELY easy it was to train the model with the data at hand.}
+
+Although training the ResNet was the most computationally expensive part of the entire project, it was still a relatively easy process. As the architecture is extremely flexible in learning patterns, and we utilized different packages to optimize for the hyperparameters (mention a few ones, e.g. ADAM, or the one Rishabh used for early stopping), we did not have to account so much for particular aspects of our data (at least not compared to when we implemented the other methods, that lead us to HOG and SIFT).
+
+
 \subsubsection{Validation performance and accuracy}
+
+
 \textbf{TODO: Provide data on how accurately the model validated the validation set.}
 \subsubsection{Kaggle/test accuracy of the model}
 As seen in our Kaggle submission, we managed to obtain an extremely high prediction accuracy, which was comparable to the one from our test dataset.
@@ -321,7 +328,7 @@ As we have learned in class, because neural networks have such exceptionally lar
 \subsubsection{How we tried to overcome it}
 \textbf{TODO: Elaborate on what methods you used on mitigating the overfitting, and how well it mitigated it. If you were unable to improve, relate it to model complexity and task difficulty.}
 
-We reduced overfitting by doing early stop, using a ridge penalty, and doing dropout
+We reduced overfitting by doing early stop, using weight decay, and doing dropout
 % Someone double check
 
 \subsection{Underfitting in whatever}
@@ -389,7 +396,7 @@ same argument.
 \end{center}
 
 \section{"Post-Processing"}
-(Note for grader: we checked with Prof. Baraniuk as to whether this is considered a valid technique, and he said it was)\par
+(Note for grader: we checked with Rocky Ren as to whether this is considered a valid technique, and he said it was)\par
 After we looked at the test images, we noticed an odd pattern: there was significant cluttering of butterflies in sequential order. This makes sense, considering that if we were to look at a user feeding data into some form of database, they would probably in clusters- as someone might take multiple pictures of the same butterfly. Furthermore, it is expected that the classification would have some natural statistical biases, for example- we might expect that if a past butterfly is from a certain location, then other species in the same region would be more likely. Thus, it makes sense to also account for those patterns when creating a classifier. \par
 Hence, we altered our prediction pipeline. Once we had our predicted list of butterflies, we retroactively scaled the softmax probability vector by a (1- 2$P$) and added P (a tunable hyperparameter) to the probability of the neighboring butterflies. With that, we managed to achieve 99.8 \% accuracy on the test dataset. \par
 It is worth noting though that this also increases the chance of overfitting to the particular dataset that we were working with, if someone decided to shuffle the data the accuracy would then go down quite a lot; so, it is important to tune the P value.
