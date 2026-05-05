@@ -1,127 +1,108 @@
+import os
+import warnings
+
 import cv2 as cv
 import numpy as np
 import pandas as pd
-import os
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import StandardScaler
-import warnings
-warnings.filterwarnings('ignore')
+from tqdm import tqdm
 
-# Load train.csv to map filenames to labels
-train_df = pd.read_csv('train.csv')
-label_to_class = dict(zip(train_df['file_name'], train_df['TARGET']))
+warnings.filterwarnings("ignore")
 
-# Initialize SIFT
+# SIFT descriptors are 128-d. We aggregate mean and std => 256-d feature vector.
+SIFT_DIM = 128
+FEATURE_DIM = SIFT_DIM * 2
 sift = cv.SIFT_create()
 
+# Simple editable settings (naive mode)
+TRAIN_CSV = "train.csv"
+TRAIN_DIR = "train_images"
+TEST_DIR = "test_images"
+SAMPLE_RATE = 5
+NEIGHBORS = 5
+MAX_TEST_ID = 1000
+OUTPUT_CSV = "results/submission_sift_knn.csv"
+
+
 def extract_sift_features(image_path):
-    """Extract SIFT features from an image"""
     img = cv.imread(image_path)
-    if img is None:
-        return None
-    
     gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
-    keypoints, descriptors = sift.detectAndCompute(gray, None)
-    
+    _, descriptors = sift.detectAndCompute(gray, None)
     return descriptors
 
 def get_feature_vector(descriptors):
-    """Convert SIFT descriptors to a feature vector using statistics"""
     if descriptors is None or len(descriptors) == 0:
-        # Return zero vector if no descriptors found
-        return np.zeros(136)  # 128*1 for mean + 8*1 for other stats
-    
+        return np.zeros(FEATURE_DIM, dtype=np.float32)
+
     descriptors = descriptors.astype(np.float32)
-    
-    # Use mean and std of descriptors
     mean_desc = np.mean(descriptors, axis=0)
     std_desc = np.std(descriptors, axis=0)
-    
-    # Combine mean and std
-    feature_vector = np.concatenate([mean_desc, std_desc])
-    
-    return feature_vector
+    return np.concatenate([mean_desc, std_desc]).astype(np.float32)
 
-# Extract features from training data (sample every few images for speed)
-print("Extracting SIFT features from training images...")
-train_features = []
-train_labels = []
+def build_training_set(train_df, train_image_dir, sample_rate):
+    train_features = []
+    train_labels = []
 
-train_image_dir = 'train_images/train_images/'
-sample_rate = 5  # Use every 5th image to speed up
+    print("Extracting SIFT features from training images...")
+    iterator = tqdm(train_df.iterrows(), total=len(train_df))
+    for idx, row in iterator:
+        if idx % sample_rate != 0:
+            continue
 
-for idx, row in train_df.iterrows():
-    if idx % sample_rate != 0:  # Sample every 5th image
-        continue
-        
-    img_path = os.path.join(train_image_dir, row['file_name'])
-    descriptors = extract_sift_features(img_path)
-    feature_vector = get_feature_vector(descriptors)
-    
-    train_features.append(feature_vector)
-    train_labels.append(row['TARGET'])
-    
-    if (idx + 1) % 500 == 0:
-        print(f"  Processed {idx + 1}/{len(train_df)} training images")
+        img_path = os.path.join(train_image_dir, row["file_name"])
+        feature_vector = get_feature_vector(extract_sift_features(img_path))
+        train_features.append(feature_vector)
+        train_labels.append(row["TARGET"])
 
-train_features = np.array(train_features)
-print(f"Training features shape: {train_features.shape}")
+    if not train_features:
+        raise RuntimeError("No training features extracted. Check paths and sample_rate.")
 
-# Standardize features
-scaler = StandardScaler()
-train_features = scaler.fit_transform(train_features)
+    X = np.array(train_features, dtype=np.float32)
+    y = np.array(train_labels)
+    print(f"Training features shape: {X.shape}")
+    return X, y
 
-# Train KNN classifier
-print("\nTraining KNN classifier...")
-knn = KNeighborsClassifier(n_neighbors=5)
-knn.fit(train_features, train_labels)
 
-# Test on specific test images
-test_indices = list(range(1, 11)) + list(range(127, 138))  # 1-10 and 127-137
-test_image_dir = 'test_images/test_images/'
+def predict_test_set(knn, scaler, test_image_dir, max_test_id):
+    rows = []
+    print("\nPredicting on selected test images...")
 
-print("\nTesting on selected images:")
-print("-" * 80)
-print(f"{'Test ID':<15} {'Actual':<30} {'Predicted':<30} {'Match':<10}")
-print("-" * 80)
+    for test_id in tqdm(range(max_test_id + 1)):
+        filename = f"test_{test_id:06d}.jpg"
+        img_path = os.path.join(test_image_dir, filename)
 
-ground_truth = {
-    'test_000003.jpg': 'ADONIS',
-    'test_000015.jpg': 'AFRICAN GIANT SWALLOWTAIL'
-}
+        if not os.path.exists(img_path):
+            continue
 
-correct = 0
-total = 0
+        feature_vector = get_feature_vector(extract_sift_features(img_path)).reshape(1, -1)
+        feature_vector = scaler.transform(feature_vector)
+        prediction = knn.predict(feature_vector)[0]
+        rows.append({"file_name": filename, "TARGET": prediction})
 
-for test_id in test_indices:
-    filename = f'test_{test_id:06d}.jpg'
-    img_path = os.path.join(test_image_dir, filename)
-    
-    if not os.path.exists(img_path):
-        print(f"Warning: {filename} not found")
-        continue
-    
-    # Extract SIFT features
-    descriptors = extract_sift_features(img_path)
-    feature_vector = get_feature_vector(descriptors).reshape(1, -1)
-    feature_vector = scaler.transform(feature_vector)
-    
-    # Predict
-    prediction = knn.predict(feature_vector)[0]
-    
-    # Get actual label if available
-    actual = ground_truth.get(filename, 'Unknown')
-    is_match = (prediction == actual) if actual != 'Unknown' else '?'
-    
-    if actual != 'Unknown':
-        total += 1
-        if is_match:
-            correct += 1
-    
-    print(f"{test_id:<15} {actual:<30} {prediction:<30} {str(is_match):<10}")
+    return pd.DataFrame(rows)
 
-print("-" * 80)
-if total > 0:
-    print(f"\nAccuracy on known labels: {correct}/{total} ({100*correct/total:.1f}%)")
-else:
-    print("\nNo ground truth labels to compare")
+def main():
+    train_df = pd.read_csv(TRAIN_CSV)
+    if "file_name" not in train_df.columns or "TARGET" not in train_df.columns:
+        raise ValueError("Train CSV must contain 'file_name' and 'TARGET' columns.")
+
+    X_train, y_train = build_training_set(train_df, TRAIN_DIR, SAMPLE_RATE)
+
+    scaler = StandardScaler()
+    X_train = scaler.fit_transform(X_train)
+
+    print("\nTraining KNN classifier...")
+    knn = KNeighborsClassifier(n_neighbors=NEIGHBORS)
+    knn.fit(X_train, y_train)
+
+    pred_df = predict_test_set(knn, scaler, TEST_DIR, MAX_TEST_ID)
+
+    output_dir = os.path.dirname(OUTPUT_CSV)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+    pred_df.to_csv(OUTPUT_CSV, index=False)
+    print(f"Saved {len(pred_df)} predictions to {OUTPUT_CSV}")
+
+if __name__ == "__main__":
+    main()
