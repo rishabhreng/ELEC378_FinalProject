@@ -7,6 +7,7 @@
 \usepackage{todonotes} % todos
 \usepackage[colorlinks=true, allcolors=blue]{hyperref} % hypertext links
 \usepackage{float}
+\usepackage[numbers]{natbib}
 \usepackage{caption}
 \usepackage{subcaption}
 \usepackage{gensymb}
@@ -197,12 +198,12 @@ All of the transforms we used in our CNN pipelines were from the \texttt{torchvi
   \item \texttt{RandomHorizontalFlip(p=0.5)}: since butterflies/moths are often symmetrically shaped, sometimes horizontally flip the image to prevent the model from having a bias toward left/right facing butterflies.
   \item \texttt{RandomRotation(degrees=10)}: a butterfly/moth can also be arbitrarily oriented, so randomly rotate the image anywhere from -10\degree \ to 10\degree \  to prevent the model from overfitting to the vertical orientations of our butterflies.
   \item \texttt{RandomAffine(degrees=0, translate=(0.1, 0.1))}: since the butterfly/moth can also be arbitrarily translated in the image, randomly translate the image by up to 10\% of its size vertically and horizontally to prevent the model from overfitting to the centered position of our butterflies (for example, in the exposition pose images like figure \ref{fig:right}).
-  \item \texttt{RandAugment(ops=2, magnitude=10)}: \todo{re-explain this probably} randomly augment our pictures by changing their brightness/warmth/contrast/posing using . Our reasoning was that this would account for possible photographic editing (those are the most commonly adjusted parameters in phtographic softwares, such as Lightroom). Moreover, this also effectively simulates a real world variation since not all real butterfly pictures have the same brightness, and this step prevented overfitting to the few images of a specific butterfly species we had in our dataset.
-  \item \texttt{ToDtype(torch.float32, scale=True)}: convert the pixel values to floats between 0 and 1.0, which is a more stable input range for our model to learn from, especially with ReLU activations.
+  \item \texttt{RandAugment(ops=2, magnitude=10)}: beyond simple effects like rotations, translations, and reflections, the RandAugment augmentation method utilizes other augmentations that we did not explicitly code our pipeline for. We felt this could especially be useful for further expand the variability of our dataset and thus encourage the model to learn truly useful features.
+  \item \texttt{ToDtype(torch.float32, scale=True)}: convert the pixel values to floats between 0.0 and 1.0, which is a more stable input range for our model to learn from, especially with ReLU activations.
   \item\texttt{ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.02)}: we wanted our model to tolerate and learn different shades of a colored butterfly/genetic variations/dirt etc., but not too much since butterflies are mainly distinguished by their color, so apply a small random variation to the hue, saturation, saturation, and contrast of the image.
   \item  \texttt{Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))}: center and normalize pixel values to ensure that the input data works well with ReLU steps in our CNN and that the training produces more stable gradients.
 
-    For our validation and test pipeline, we only convert the data to a Pytorch image tensor, ensure the image is 224x224x3, center and normalize, and convert to a float tensor. We do this because all the augmentation steps described above are useful in training the model, but we want consistent/stable validation, so we decided not to apply those preprocessing steps to our validation/test sets.
+For our validation and test pipeline, we only convert the data to a Pytorch image tensor, ensure the image is 224x224x3, center and normalize, and convert to a float tensor. We do this because all the augmentation steps described above are useful in training the model, but we want consistent/stable validation, so we decided not to apply those preprocessing steps to our validation/test sets.
 \end{enumerate}
 
 \subsubsection{Preprocessing for HOG+RBF SVM} \todo{review this for accuracy}
@@ -230,7 +231,7 @@ All of the transforms we used in our CNN pipelines were from the \texttt{torchvi
       \begin{subfigure}[b]{0.475\textwidth}
         \centering
         \includegraphics[width=\textwidth]{imgs/test_000003_crop.jpg}
-        \caption{\texttt{test \textunderscore00003.jpg}, cropped; perfect segmentation of the subject and background.}
+        \caption{\texttt{test \textunderscore00003.jpg}, cropped; near-perfect segmentation of the subject and background.}
       \end{subfigure}
       \vskip\baselineskip
       \begin{subfigure}[b]{0.475\textwidth}
@@ -278,15 +279,15 @@ All of the transforms we used in our CNN pipelines were from the \texttt{torchvi
   \item \textbf{In our CNN model,} we do not externally apply any dimensionality reduction but let the layers of our neural network handle it. The pooling, convolutions, and compression inside the hidden layers do the 'dimensionality reduction' for us. Moreover, CNN training is parallelizable with CUDA in nature, so it is much more efficient with more features.
 \end{enumerate}
 
-\section{Models Considered for the Project}
-\subsection{Model 1: ResNet CNN}
+\section{Models Considered}
+\subsection{ResNet CNN}
 \subsubsection{Why we chose to try it}
-We have read some articles online that the peak image classification accuracies in diverse datasets like Caltech 101 were around 70-80\% without the use of convolutional neural networks (CNNs), and that CNNs broke this wall and reached around 90-99\% accuracy with ease. We also checked our homework description that said \textbf{at least one model should NOT involve a neural network}, and took the hint that neural networks are probably some good classifiers. \todo{add citations for these claims}.
-\subsubsection{Algorithm/Workflow}
-A convolutional neural network performs similarly to how a human brain is thought to visually recognize an image, and it has a simple pipeline once the algorithm is understood well. It works by passing the inputs through a variety of hidden layers before passing to a 'logistic regression' output layer. Moreover, it uses matrix convolution rather than explicit vector/array multiplication to significantly reduce the number of model parameters, allowing us to deepen the model without significantly decreased performance or vanishing gradients in the backpropagation process. The workflow is as follows:
+We have read some articles online that the peak image classification accuracies in diverse datasets like Caltech 101 were around 70-80\% without the use of convolutional neural networks (CNNs)\cite{svmacc}, and that CNNs broke this wall and reached around 90-99\% accuracy with ease.\cite{imagenet}\cite{Zabir_Fazira_Ibrahim_Sabri_2018} Also, the project descriptions explicitly states that one of our model choices shouldn't be a neural network, which suggested to us that a neural network might perform quite well. In addition, CNNs are well-known architectures for approaching image classification problems like MNIST digit recognition or the ImageNet dataset.
+\subsubsection{Algorithm/Workflow} \todo{review}
+A convolutional neural network performs similarly to how a human brain is thought to visually recognize an image, and it has a simple pipeline once the algorithm is understood well. It works by passing the inputs through a variety of hidden layers before finally predicting class probabilities with a ``logistic regression'' output layer. Moreover, it uses matrix convolution rather than explicit vector/array multiplication to significantly reduce the number of model parameters, allowing us to deepen the model without significantly decreased performance or vanishing gradients in the backpropagation process. The workflow is as follows:
 \begin{enumerate}
-  \item We assume our images have been preprocessed and input to the CNN to train the model.
-  \item In the first layer, we first perform \textbf{feature extraction} on the input using 2-dimensional convolutions to learn the edges and color gradients.
+  \item We pass preprocessed images to the first layer.
+  \item The first layer, we first perform \textbf{feature extraction} on the input using 2-dimensional convolutions to learn the edges and color gradients.
   \item We then downsample the data using max-pooling so that we only keep the strongest indicators/features.
   \item Then, we pass them to the middle hidden layers, which build up increasingly complex patterns from the features using an arbitrary/tuneable variety of approaches where we will discuss in the \textit{How Each Model Was Trained} section.
   \item After that, we perform a spatial compression using average-pooling, which removes the spatial dimension to only leave the information about 'how strongly each feature was present in the data'.
@@ -357,10 +358,31 @@ Support vector machines (SVMs) are essentially classifiers that fit an arbitary-
   In the end, our performance was at most around 42 \% for this model. So, it was still not the best non-neural network based model (which was rather unfortunate, given this was our original model)\\
   We initially were considering other ways to improve our model. However, we ran into a few issues, the most important one is that SIFT does not account for any form of color, which is quite helpful for classifying butterflies. Moreover, when we started looking into other possible filters, almost all of them increased the image complexity- which made KNN very inefficient at classifying.
   Thus, given that the performance (at best around 40\%) was still considerably worse than the our simple first implementation of SVM, we ended up deciding not to proceed any further with this architecture.
-  \section{How Each Model Was Trained}
-  \subsection{Model 1: Neural Network}
-  \textbf{TODO: Elaborate on how the model training and validation procedure works/worked. Include the design choices you made overtime (from the design choices you listed above that affect the model) and why you made those choices. If you made any changes to those choices or the procedure, list them and explain why you made the change.}
-  \subsection{Model 2: Whatever}
+  \section{Training Procedures}
+  We describe the training and validation process of our models as implemented in our Python code in this section (PyTorch Lightning notebook \texttt{kfold\_clf.ipynb}, \texttt{svmkernel\_model.py}, and \texttt{sift\_knn\_classifier.py}). Preprocessing and data augmentation are already summarized in the previous sections; hence, here we focus on data splits, optimization, schedules, regularization, and how we trained each classifier.
+
+  \subsection{Model 1: ResNet CNN (with PyTorch Lightning)}
+  We used PyTorch Lightning to train our CNN classifier, as the library allowed us to streamline our code, as well as quickly iterate training the model with different hyperparameters and maintain comprehensive logging of the training process. The model architecture is based on ResNet-18, which has 18 layers with three structural changes compared to the ImageNet: the first convolution uses stride of 1 and padding of 1 (we downsample later compared to the usual ResNet architectures); the max-pooling stage is replaced by an identity mapping to preserve more fine-grained information; and the original fully connected layer is replaced by a two-part head dropout block with probability 0.4 followed by a linear mapping from 512 features to 100 classes (the output number of classes). The model applies dropout only at the head and not inside the residual blocks.
+  \begin{enumerate}
+  \item\textbf{Data partitioning.} We use \texttt{sklearn.model\_selection.StratifiedKFold} with shuffling, \texttt{random\_state}=42 for reproducibility, and \texttt{n\_splits}=6 for 6-fold cross validation (even though we mentioned 5-fold above, averaging across our 6-fold results proved marginally superior in our experiments). This way, we train and test our classifier by averaging out the parameters learned from the whole dataset, yielding a more stable training and test regimen.
+  \item\textbf{Mini-batch training.} For each fold in our training and validation process, \texttt{ImageDataset} maps CSV rows to integer labels via a fixed alphabetical ordering of class names. The training dataloader uses a batch size of 32, random shuffling, \texttt{num\_workers}=4 for faster training/prediction, and \texttt{pin\_memory=True} for increased performance. Validation and test prediction loaders use the non-augmented preprocessing pipeline aforementioned since they should make predictions on the raw data; and the test \texttt{DataLoader} uses a batch size of 1 to make predictions sequentially.
+  \item\textbf{Class imbalance in the loss.} Before we fit a fold, we compute class frequencies on the fold's training frame. We set the class-weights proportional to the inverse frequency (total count divided by class count, scaled by the number of classes) and pass them into \texttt{nn.CrossEntropyLoss} as tensor weights. This reweights the softmax cross-entropy so we balance \todo{what does this mean?}exploration and exploitation by making species with less number of samples contribute relatively more to the gradients.
+  \item\textbf{Loss, label smoothing, and optimization.} The training configuration sets label smoothing to 0.1 combined with the weighted cross-entropy approach we discussed above. This replaces one-hot truth label vectors by smoother versions, ideally improving the model's generalizability and accuracy. \todo{Explain why use AdamW, move details from below up here} Our optimizer is AdamW with learning rate $3\times10^{-3}$ and weight decay of $10^{-2}$. \todo{Discuss how we also tried CosineAnnealingWarmRestarts and ReduceLROnPlateau but the most significant change to our accuracy came from using a small initial learning rate and our ResNet architecture} A cosine annealing scheduler (\texttt{CosineAnnealingLR}) runs through the maximum number of epochs with \texttt{T\_max = 100}, stepping once per epoch. We also enable mixed-precision training when supported (\texttt{16-mixed}) for increased performance and better memory complexity; and we also set \texttt{torch.set\_float32\_matmul\_precision('medium')} for the Tensor Core behavior on the utilized NVIDIA GPUs to help speed up the training process.
+  \item\textbf{Stopping, checkpoints, and logging.} We use early stopping in our training process \texttt{val\_accuracy} with a patience of 12 epochs to detect convergence. The \texttt{ModelCheckpoint} keeps the top three checkpoints by validation accuracy, saves the last checkpoint in the file \texttt{last.ckpt}, and stores the files under a run directory for each fold of the training process. We use a learning rate monitor and a progress bar for easier analysis of checkpoint convergence; and we log the metrics with \texttt{CSVLogger}. We can resume the training from the last checkpoint whenever \texttt{RESUME\_FROM\_LAST\_CHECKPOINT} is true, making the training progress more flexible.
+  \item\textbf{Ensembling across folds.} After training each fold, we load the checkpoints and either average the logits across folds or take a per-sample majority vote among the argmax predictions from each fold. After that, we map the indices back to species names for submission. We use this approach to exploit the diversity of our dataset and have a more stable classifier since it has been empirically shown in studies that ensembling can help increase accuracy while also improving overfitting.\cite{8539396}
+\end{enumerate}
+  \subsection{Model 2: HOG + RBF kernel SVM (\texttt{svmkernel\_model.py})}
+  Unlike our ResNet CNN model, we do not use $k$-fold cross validation in this model. However, if we wanted to further improve this model, we might want to use it; as having observed its high accuracy in our CNN classifier. We still map the labels to integers (with \texttt{LabelEncoder} this time). A single data split (\texttt{train\_test\_split}, 80\% train / 20\% test, \texttt{random\_state}=42 for reproducibility, stratified on encoded targets) defines our training and validation sets as it is a common approach to set the split proportions to 80/20.
+  \begin{enumerate}
+  \item\textbf{Feature construction and fitting order.} For each training row, features are extracted twice when \texttt{flip=True} is used on the second pass, hence the training set effectively doubles in size (original plus mirrored vectors - reason explained in preprocessing section). Like our other models, we only use the non-augmented data for validation. After stacking the vectors, we fit \texttt{StandardScaler} on the training matrix and apply it to both train and test feature matrices. We then do PCA on the training data to improve performance with \texttt{n\_components=0.95} (retain 95\% of variance), and the same PCA transforms validation features, also to improve performance. We fit the scaler before PCA to improve accuracy on the validation data.
+  \item\textbf{SVM training.} We use the scikit-learn implementation of the SVM classifier \texttt{sklearn.svm.SVC} with the Gaussian Kernel \texttt{kernel='rbf'}, \texttt{cache\_size=5000} MB for performance, and \texttt{random\_state}=42 for reproducibility. Hyperparameters $C$ and $\gamma$ are left at their library defaults (so $C=1$ and $\gamma$ uses the ``scale'' heuristic). We fit the model on our full PCA-reduced, augmented training set in one batch solve; and report the validation accuracy metrics with \texttt{score} on the held-out 20\% of the data.
+  \end{enumerate}
+
+  \subsection{Model 3: KNN + SIFT (\texttt{sift\_knn\_classifier.py})}
+  We have left this pipeline light using mostly built-in and already implemented packages to focus more on more promising approaches, as this is more of an experiment because Prof. Baraniuk told in class that K-NN performs well in general even though the complexity is high. We run OpenCV's SIFT implementation (\texttt{cv.SIFT\_create}) on the grayscale images we read from the dataset. We then standardize the variable length SIFT output to vectors of fixed length: we concatenate the mean and standard deviation of all 128 rows to the data, giving 256 features per image. If no keypoints or descriptors are returned, we substitute that with a zero vector - but this rarely happens in our dataset from our observations after fitting the model.
+  \begin{enumerate}
+  \item\textbf{Training subset and $k$-NN.} To reduce runtime, we only use every fifth row of \texttt{train.csv}. We skip (\texttt{idx \% sample\_rate != 0} with \texttt{sample\_rate}=5), so, roughly 20\% of labeled data participate in fitting. This is to increase performance since as we mentioned, KNN is a slow classifier with high time complexity. We standardize the features with \texttt{StandardScaler} fit on that subset. We use the \texttt{KNeighborsClassifier} with the default $k=5$ neighbors and Euclidean distance metric. We do not perform an explicitly training/test split on this dataset to keep complexity of the model low, and performance high.
+  \end{enumerate}
 
   \section{Quantitative Comparison of the Models}
   \subsection{Model 1: Neural Network}
@@ -391,7 +413,7 @@ Support vector machines (SVMs) are essentially classifiers that fit an arbitary-
   \subsubsection{How we tried to overcome it}
   \textbf{TODO: Elaborate on what methods you used on mitigating the overfitting, and how well it mitigated it. If you were unable to improve, relate it to model complexity and task difficulty.}
 
-  We reduced overfitting by doing early stop, using weight decay (i.e. a ridge penalty), and doing dropout
+  We reduced overfitting by doing early stop, using weight decay (i.e. a ridge penalty), and using dropout layers.
   % Someone double check
 
   \subsection{Underfitting in whatever}
@@ -432,8 +454,8 @@ Support vector machines (SVMs) are essentially classifiers that fit an arbitary-
       ]
 
       % Nodes
-      \node [block] (b1) {1. Preprocessing \\ $\bullet$ Data augmentation (preprocessing) \\ $\bullet$ Normalization};
-      \node [block, below=of b1] (b2) {2. Data Split \\ $\bullet$ 1/6 cross k-fold validation};
+      \node [block] (b1) {1. Preprocessing \\ $\bullet$ Data augmentation \\ $\bullet$ Normalization};
+      \node [block, below=of b1] (b2) {2. Data Split \\ $\bullet$ 1/6 k-fold cross validation};
       \node [block, below=of b2] (b3) {3. Feature extraction \\ $\bullet$ First layer learns edge and color detection};
       \node [block, below=of b3] (b4) {4. Model training \\ $\bullet$ INSERT MORE DETAILS};
       %4. Data Split \\ $\bullet$ Train / Validation / Test
@@ -476,4 +498,6 @@ Support vector machines (SVMs) are essentially classifiers that fit an arbitary-
   We were surprised when looking at some of the misclassified butterflies. While the majority of them had some large visual variation (e.g. the wings were shown from the top, which has a very different visual aspect to the bottom of the butterfly, and looked like another species). However, there some classifications that seemed similar to the rest of the dataset, so we were surprised that they were misclassified (which goes to show, as discussed in class that Neural Networks can be sensitive to small changes, producing unpredictable errors).
   \subsection{What's new to come}
 
+\bibliographystyle{plainnat}
+\bibliography{references}
   \end{document}
