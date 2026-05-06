@@ -426,7 +426,8 @@ Note that the train and validation accuracy reported for the CNN is the average 
 \textbf{TODO: Describe the instances where your models overfit/underfit, by first stating which model it was, and elaborate on what caused it. Then discuss strategies you resorted to, to overcome that over/underfitting. You might find it useful to explain overfitting/underfitting using the validation/test accuracy discrepancies of the model stated above.}
 \subsection{Overfitting in Neural Network Model}
 \subsubsection{Evidence of overfitting}
-The main evidence of overfitting in our model, was that we had a training accuracy of over 99\%, and a validation accuracy of 93\% (our final submission accuracy was somewhat higher, but we achieved that by using a voting model across our different data splits). So, this is the main trait of overfitting, improved performance on training set, which did not improve the actual model performance.
+The main evidence of overfitting in our model, was that we had a training accuracy of over 99\%, and a validation accuracy of 93 \% (our final submission accuracy was somewhat higher, but we achieved that by using a voting model across our different data splits). So, this is the main trait of overfitting, improved performance on training set, which did not improve the actual model performance.
+Likewise, when it came to the SVM, we had a higher training accuracy than the validation one. In order to prevent this, we added a hyperparameter to punish larger  weight values ($\lambda$).
 
 \subsubsection{What may have caused it}
 As we have learned in class, because neural networks have such exceptionally large number of weights to classify. Thus, as expected, it manages to reduce the training data error significantly, even though it does not translate into actual improvements in the accuracy.
@@ -437,7 +438,7 @@ As we have learned in class, because neural networks have such exceptionally lar
 We reduced overfitting by doing early stop, using weight decay (i.e. a ridge penalty), and using dropout layers.
 % Someone double check
 
-\subsection{Underfitting in whatever}
+\subsection{p}
 same argument.
 
 \section{Pipeline for the Final Submission}
