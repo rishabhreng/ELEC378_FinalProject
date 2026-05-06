@@ -219,7 +219,7 @@ Our preprocessing pipeline for the kernel SVM model was quite different and perh
 
     The validation/test pipeline was the exact same except that we did not flip the images, as this would just introduce randomness into the prediction process.
 
-    \subsection{Background removal}
+    \subsection{KNN +SIFT, and considerations on background removal}
     We hypothesized that, due to the extra background information in the natural images (e.g. flowers and grass), a model could potentially perform better if we removed that background information and gave the model only subjects to learn. In other words, we thought that converting all images into ``exposition pose'' (subject on plain background) would improve our classifier's accuracy. This segmentation task itself proved to be challenging, and we tried a few methods with OpenCV functions, the most effective of which utilizes the GrabCut image segmentation algorithm using a full-image initial bounding box as well as morphological erosion and dilation operations. After trying different user-chosen parameters with the GrabCut algorithm, This was generally successful at isolating the subjects, but sometimes removed too much from the subject or did not remove enough. Consider the examples of the original image and the background-removed image in Figure \ref{fig:background_removal_comparison} below:
     \begin{figure*}[htbp]
       \centering
@@ -278,6 +278,7 @@ Our preprocessing pipeline for the kernel SVM model was quite different and perh
 \begin{enumerate}
   \item \textbf{In our HOG+SVM model,} we apply PCA on our data vectors to capture 0.95 of the variance, because training and testing the SVM is a sequential, CPU-heavy process.
   \item \textbf{In our CNN model,} we do not externally apply any dimensionality reduction but let the layers of our neural network handle it. The pooling, convolutions, and compression inside the hidden layers do the 'dimensionality reduction' for us. Moreover, we were able to parallelize the CNN training, such that it remains efficient with more features.
+  \item Similarly, \textbf{in our KNN+SIFT, we reduced the dimensionality of the data as SIFT returns only 196 parameters.
 \end{enumerate}
 
 \section{Models Considered}
