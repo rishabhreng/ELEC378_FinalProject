@@ -132,7 +132,7 @@ In the training set, each class was associated with an average of 126 samples, w
   \label{fig:classdist}
 \end{figure}
 % IMAGE SIZES
-Furthermore, while each image was exactly 224x224x3 pixels (since they were RGB), we noticed a large variation in the information within images. More saturated images had a higher file size while simpler images (for example, white backgrounds) had lower file sizes. The largest pictures contained almost 52kB of data, and the smallest contained about 8kB, while most of the images contained 20 to 30 kB, as shown in the plot below:
+Furthermore, while each image was exactly 224x224x3 pixels (since they were RGB), we noticed a large variation in the information within images. More detailed images had a higher file size while simpler images (for example, white backgrounds) had lower file sizes. The largest pictures contained almost 52kB of data, and the smallest contained about 8kB, while most of the images contained 20 to 30 kB, as shown in the plot below:
 \begin{figure} [H]
   \centering
   \includegraphics[width=0.5\linewidth]{imgs/imagefilesizedist.png}
@@ -204,7 +204,7 @@ All of the transforms we use in our CNN pipeline are located in the \texttt{torc
 \end{enumerate}
 
 \subsection{Preprocessing for Kernel SVM} \todo{review this for accuracy}
-Our preprocessing pipeline for the kernel SVM model was quite different and pehraps simpler than the one for the CNN model, partially because the CNN model is more robust to noise and can learn features from raw data, while the SVM model is more sensitive to noise and requires more careful feature engineering. Hence, we applied a simpler and more targeted preprocessing pipeline to our SVM model. In addition, we saw relatively poor initial results from the kernel SVM model compared to the CNN classifier, and we felt that while the SVM model could be potentially improved with more careful feature engineering, the CNN was already performing much better, so we decided to focus our effforts more on improving the CNN model rather than the SVM model. Our SVM preprocessing pipeline consists of the following steps:
+Our preprocessing pipeline for the kernel SVM model was quite different and perhaps simpler than the one for the CNN model, partially because the CNN model is more robust to noise and can learn features from raw data, while the SVM model is more sensitive to noise and requires more careful feature engineering. Hence, we applied a simpler and more targeted preprocessing pipeline to our SVM model. In addition, we saw relatively poor initial results from the kernel SVM model compared to the CNN classifier, and we felt that while the SVM model could be potentially improved with more careful feature engineering, the CNN was already performing much better, so we decided to focus our effforts more on improving the CNN model rather than the SVM model. Our SVM preprocessing pipeline consists of the following steps:
 \begin{enumerate}
   \item Resize the image to 64x64x3. We utilize scikit-learn for our SVM implementation, which meant that the SVM training/prediction process is sequential and CPU-heavy, so we wanted to reduce the number of features in our data vectors to improve training/prediction speed. We chose 64x64 because it is a reasonable balance between preserving the features of the image and reducing the number of features.
   \item We double the size of our dataset, generating a copy of the images which is horizontally flipped using \texttt{numpy.fliplr()}. This exploits the symmetry of butterflies and prevents our model from overfitting to left/right facing orientations.
@@ -287,7 +287,7 @@ Like a plain neural network, the CNN passes images through a series of layers be
 \todo{review these steps}
 \begin{enumerate}
   \item We pass preprocessed images to the first layer.
-  \item The first layer, we first perform feature extraction on the input using 2-dimensional convolutions to learn the edges and color gradients.
+  \item The first layer, we first perform feature extraction on the input using 2-dimensional convolutions to learn the edges and color gra  dients.
   \item We then downsample the data using max-pooling so that we only keep the strongest indicators/features.
   \item Then, we pass them to the middle hidden layers, which build up increasingly complex patterns from the features using an arbitrary/tuneable variety of approaches where we will discuss in the \textit{How Each Model Was Trained} section.
   \item After that, we perform a spatial compression using average-pooling, which removes the spatial dimension to only leave the information about 'how strongly each feature was present in the data'.
@@ -477,7 +477,7 @@ same argument.
 
     % Feedback Arrow
     \draw [arrow] (b8.west) to[out=180, in=180, looseness=1.2] node[left] {Only do this once} (b6.west);
-    \draw [arrow] (b4.west) to[out=180, in=180, looseness=1.2] node[left] {Repeat 6 times} (b2.west);
+    \draw [arrow] (b4.west) to[out=180, in=180, looseness=1.2] node[left] {Repeat 5 times} (b2.west);
 
   \end{tikzpicture}
 \end{center}
