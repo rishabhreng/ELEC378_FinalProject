@@ -32,8 +32,4 @@ python sift_knn_classifier.py
 
 You can run the CNN by running each cell in `kfold_clf.ipynb`, or by executing each section marked by the Markdown cells.
 
-## Reproduce experiments
-
-- Use the notebooks for step-by-step data exploration and model evaluation.
-- Check `lightning_logs/` for training runs (if PyTorch Lightning was used).
-- Many experiments save outputs in `results/folds/` — see these when re-running cross-validation.
+To use the checkpoints we have saved for the CNN, download them from [here](https://drive.google.com/file/d/1H8-it7z9_Wvpi4iegeSbukO0wG-NAQwh/view?usp=sharing) and extract the folder into the main directory.
