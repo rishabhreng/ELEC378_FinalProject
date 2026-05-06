@@ -6,6 +6,7 @@
 \usepackage{footnote} % footnote fix
 \usepackage{todonotes} % todos
 \usepackage[colorlinks=true, allcolors=blue]{hyperref} % hypertext links
+\usepackage{booktabs}
 \usepackage{float}
 \usepackage[numbers]{natbib}
 \usepackage{caption}
@@ -54,7 +55,7 @@
 \renewcommand{\familydefault}{\sfdefault}
 
 \newcommand{\documentTitle}{Final Project Report}
-\newcommand{\documentAuthor}{Austin Yilmaz, João de Lima Vana,Rishabh Rengarajan}
+\newcommand{\documentAuthor}{Austin Yilmaz, João de Lima Vana, Rishabh Rengarajan}
 \newcommand{\courseTitle}{ELEC 378 Spring 2026}
 
 \title{}
@@ -88,6 +89,7 @@
 \maketitle
 
 \newpage
+\tableofcontents{}
 
 \section{Introduction and Team information}
 This report presents the challenges faced, how we overcame them, and our insights on the process for the final project of the ELEC378 course. Our task was to create a multiclass image classifier to classify butterfly and moth species and evaluate this classifier's accuracy on a Kaggle contest. We pursued three model architectures---a ResNet convolutional neural network, a kernel SVM, and a custom SIFT + K-Nearest Neighbors classifier approach---and made various design choices that will be explained in detail below.
@@ -171,8 +173,8 @@ In terms of visual variability, we noticed two broad categories of images: insec
 \todo{the following paragraph is sketchy}
 The exposition pose is the easiest one in terms of preprocessing (as our background removal packages excel at removing single colored backgrounds). Meanwhile, the natural ones posed a bigger challenge, as some pictures were overexposed (e.g. test\textunderscore image 00999), some were on top of flowers (e.g. train\textunderscore image 000199), which made edge detection harder. Also, we have realized that \textbf{color} and \textbf{wing shape} were the most drastic differentiators between two species of butterflies, so we incorporated the intuition we gained from those differences into the approaches we used in the preprocessing stage of our data.
 
-\subsection{How we split the dataset for training and validation}
-A common technique to ensure that we can correctly evaluate our model's performance and tune hyperparameters accordingly is to train the model on a training set and, evaluate it on a validation set. To reduce biases caused by the particular choice of the training/validation split, we also used k-fold cross validation (with k=5), in which we repeat the training/validation process 5 times with different splits and average the results to get a more stable estimate of our model's performance. We chose k=5 because we used the typical 80/20 train/validation split (80\% of the data for training and 20\% for validation) to maximize the number of images we can use for training while still having a good amount of data for validation; with that split, 5 folds would allow us to use all of our data for training and validation across the different folds.
+\subsection{Dataset split for training and validation}
+A common technique to ensure that we can correctly evaluate our model's performance and tune hyperparameters accordingly is to train the model on a training set and, evaluate it on a validation set. To reduce biases caused by the particular choice of the training/validation split, we also used k-fold cross validation (with k=5), in which we repeat the training/validation process 5 times with different splits and average the results to get a more stable estimate of our model's performance. We chose k=5 because we used the typical 80/20 train/validation split for all our models (80\% of the data for training and 20\% for validation) to maximize the number of images we can use for training while still having a good amount of data for validation; with that split, 5 folds would allow us to use all of our data for training and validation across the different folds.
 
 % \todo{reconsider this following part}
 % We chose this approach to partitioning the data because it has been empirically shown to excel in independent and identically distributed (i.i.d.) datasets with dozens of classes, but later, we also considered the following additions to our split:
@@ -186,7 +188,7 @@ A common technique to ensure that we can correctly evaluate our model's performa
 We choose to apply different preprocessing pipelines to our different model architectures, as they have different requirements and are affected differently by the preprocessing steps.
 % For example, the CNN model is more robust to noise and can learn features from raw data, while the SVM model is more sensitive to noise and requires more careful feature engineering. Hence, we applied a more complex and aggressive preprocessing pipeline to our CNN model, while we applied a simpler and more targeted preprocessing pipeline to our SVM model. \par
 
-\subsection{Preprocessing for the CNN Classifier}
+\subsection{Preprocessing for the CNN Classifier} \label{sec:cnn_preprocessing}
 All of the transforms we use in our CNN pipeline are located in the \texttt{torchvision.transforms} package. Our training pipeline consists of the following steps:
 \begin{enumerate}
   \item \texttt{ToImage()}: convert the initial 224x224x3 image vector to a PyTorch image tensor, which allowed us to utilize CUDA and improve training/prediction speed.
@@ -312,12 +314,12 @@ Like a plain neural network, the CNN passes images through a series of layers be
 \begin{enumerate}
   \item \textbf{Supervised learning/Classification}: The ResNet CNN we trained is a supervised learning model where inputs are images (data) with labels and the outputs are a discrete number (100) of classes. Hence, this is a mainstream classification problem which we have learned in class to approach with methods like logistic regression, KNN, SVMs, and of course, neural networks.
   \item \textbf{Feature engineering and learning}: Our CNN learns the features of the data by applying convolution layers and residual blocks. \todo{this seems vague or useless to say?}
-  \item \textbf{Optimization/OR}: We have a convex loss function that is called cross-entropy (log-loss), and we use an optimization algorithm based on \textit{Gradient Descent} that is called adamW.
+  \item \textbf{Optimization}: We have a convex loss function that is called cross-entropy (log-loss), and we use an optimization algorithm based on \textit{Gradient Descent} that is called adamW.
   \item \textbf{Linear algebra background}: Since we are working with matrices, tensor operations, convolutional layers, max-pooling, and backpropagation of gradients, our work is based in ideas from vector calculus and linear algebra.
 \end{enumerate}
 \subsubsection{Loss function of the model}
 Our CNN uses cross-entropy loss and uses the AdamW optimizer in gradient descent. The cross-entropy loss is derived from Maximum Likelihood Estimation (MLE) of logistic regression, and it has two terms, where one activates and the other deactivates. It is also convex, and hence optimizable by gradient descent-based algorithms. AdamW is a fairly new algorithm (2017, \cite{loshchilov2019decoupledweightdecayregularization}) that uses ``adaptive moment estimation'' and ``weight decaying'', in which the ``moments'' are closely related to gradients in gradient descent; and weight decaying is just a smart way of steering the model away from underfitting to more previous data in the training procedure. \todo{revise discussion of AdamW}
-\subsection{Model 2: HOG+RBF Kernel SVM}
+\subsection{Model 2: Kernel SVM}
 \subsubsection{Why we chose to try it}
 We chose the Kernel SVM as the required ``non-neural-network based model'' for the  project (in addition, we were required to implement one in Homework 7 of the course). We read some articles online that suggested with the right training regimen and preprocessing (HOG), kernel SVMs can achieve accuracies as high as 70\% in multi-class classification problems similar to our dataset (like Caltech 101) \todo{citation needed}, so it was worth trying to see how well it would perform on our butterfly classification problem.
 \subsubsection{Algorithm/Workflow}
@@ -337,14 +339,14 @@ Support vector machines (SVMs)  learn a hyperplane to separate the data points. 
       \(\hat{y} = \operatorname{argmax}_{k} \; f_k(\mathbf{\hat x})\) \todo{what is k here?}
     \end{center}
 \end{enumerate}
-\subsubsection{Design choices that affect the model}
+\subsubsection{Design choices}
 \begin{enumerate}
   \item \textbf{Kernel choice:} We need a kernel that has enough dimensionality to get us a linearly separable transformation, but also one that prevents overfitting and is stable. The gaussian kernel is known to have both of those features. By contrast, the sigmoid (tanh) kernel is known to be unstable \todo{cite?} even though it also maps the data to ``infinite'' dimensions; and the polynomial kernels are known to overfit/underfit easily to complex datasets.
   \item \textbf{Regularization parameter $C$:} Do we want higher bias, lower variance (higher $C$) in our hyper-slab, or vice versa (lower $C$)? This can drastically change our prediction accuracy, and we adjusted this hyperparameter to get higher prediction accuracy/lower overfitting levels.
   \item \textbf{Gaussian exponentiation scaler $\gamma$:} If we increase this value, even the slightest spatial local adjustments between data can affect our classifier, which can lead to overfitting. However, if we decrease this value, our classifier may underfit. We also need to pay attention to this hyperparameter to have a good classifier.
   \item As with the CNN model, the preprocessing of the data is the most important of the design choices we have made. Most of the work we did in training this classifier was considering how best to preprocess the data (finally deciding to HOG+PCA). If the input data does not provide a good representation of the images we want to classify, the SVM will perform poorly no matter how well we tune the hyperparameters of the SVM.
 \end{enumerate}
-\subsubsection{Course concepts used in the model}
+\subsubsection{Course concepts used}
 \begin{enumerate}
   \item \textbf{Supervised learning/Classification}: Similarly to the CNN model, we do supervised learning here, and the problem is a classification problem.
   \item \textbf{Optimization/SGD}: We solve a convex optimization problem by minimizing hinge-loss while maximizing margin in the SVM. We are using a variant of (stochastic) gradient descent to solve this problem.
@@ -353,7 +355,7 @@ Support vector machines (SVMs)  learn a hyperplane to separate the data points. 
   \item \textbf{Kernel methods/Kernel trick}: To make our data vectors linearly separable, we nonlinearly transform the data using the RBF kernel, and practically optimize the SVM using the kernel trick.
   \item \textbf{Linear algebra background:} We are also working with matrices and vector operations here both in the preprocessing of the data and the training of the model. We also use gradients in the optimization for this model, so our work is still based in vector calculus and linear algebra.
 \end{enumerate}
-\subsection{Model 3: KNN + SIFT}
+\subsection{Model 3: SIFT + KNN}
 When we started looking for filters for our image processing step, we noticed that the SIFT feature descriptor (introduced in class) reduced each image from several thousand features (\(224^2 \cdot 3 = 150528\) pixels per image; even if resized: \(64^2*3 = 12288\) pixels per image) down to 196. On the other hand, the K-Nearest Neighbors classification algorithm is known for accuracy but also for its high time complexity, so we hypothesized that we could reduce the dataset's feature size using SIFT and then classify with KNN.
 
 Furthermore, as the points of interest are scale and rotation invariant, this improves KNN ability to deal with rotated pictures (which was a severe issue as it changes almost all the pixels around).
@@ -388,20 +390,37 @@ Our pipeline for this model is light and uses mostly already implemented package
 
 \section{Quantitative Comparison of the Models}
 \subsection{Model 1: Neural Network}
-\subsubsection{Training performance and robustness}
-\textbf{TODO: Explain how RELATIVELY easy it was to train the model with the data at hand.}
+We have the following quantitative results for our best (highest Kaggle test accuracy) results with each model architecture, which we will discuss below:
+\begin{table}[h]
+  \centering
+  \caption{Model Performance Comparison}
+  \label{tab:model_results}
+  \begin{tabular}{lccc}
+    \toprule
+    \textbf{Model} & \textbf{Train Accuracy (\%)} & \textbf{Validation Accuracy (\%)} & \textbf{Kaggle (private leaderboard) Test Accuracy (\%)} \\
+    \midrule
+    CNN & 98.6 & 92.9 & 99.8 \\
+    SVM & 91.2 & 88.7 & 63.4 \\
+    KNN & 48.5 & 29.8 & 37.0 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
-Although training the ResNet was the most computationally expensive part of the entire project, it was still a relatively easy process. As the architecture is extremely flexible in learning patterns, and we utilized different packages to optimize for the hyperparameters (mention a few ones, e.g. ADAM, or the one Rishabh used for early stopping), we did not have to account so much for particular aspects of our data (at least not compared to when we implemented the other methods, that lead us to HOG and SIFT).
+Note that the train and validation accuracy reported for the CNN is the average accuracy across all 6 folds in the best result we obtained, and the test accuracy is the one from our best submission on Kaggle. For the SVM and KNN models, we only have one training/validation accuracy since we did not have the time to implement $k$-fold cross validation for those models.
 
-\subsubsection{Validation performance and accuracy}
-\textbf{TODO: Provide data on how accurately the model validated the validation set.}
-\subsubsection{Kaggle/test accuracy of the model}
-As seen in our Kaggle submission, we managed to obtain an extremely high prediction accuracy, which was comparable to the one from our test dataset.
-\textbf{TODO: Elaborate on the Kaggle accuracy of the model, and how it compares to the validation accuracy.}
-\subsubsection{Relative strengths and weaknesses of the model}
-\textbf{TODO: Based on how the model quantitatively compares to the other models in terms of performance, also based on the correspondence between its validation and test performance, elaborate on the strengths and weaknesses of the model. For example, a strength can be validation and test accuracies both being high, implying less overfitting. A weakness can be long training times and requirement of precise tuning.}
-\subsection{Model 2: Whatever}
-do the same thing as above
+% \subsubsection{Training performance and robustness}
+
+% Although training the ResNet was the most computationally expensive part of the entire project, it remained relatively easy to train once the framework was fully set up. The architecture is extremely flexible to configure, and because we used , we did not have to account so much for particular aspects of our data (at least not compared to when we implemented the other methods, that lead us to HOG and SIFT).
+
+% \subsubsection{Validation performance and accuracy}
+% \textbf{TODO: Provide data on how accurately the model validated the validation set.}
+% \subsubsection{Kaggle/test accuracy of the model}
+% As seen in our Kaggle submission, we managed to obtain an extremely high prediction accuracy, which was comparable to the one from our test dataset.
+% \textbf{TODO: Elaborate on the Kaggle accuracy of the model, and how it compares to the validation accuracy.}
+% \subsubsection{Relative strengths and weaknesses of the model}
+% \textbf{TODO: Based on how the model quantitatively compares to the other models in terms of performance, also based on the correspondence between its validation and test performance, elaborate on the strengths and weaknesses of the model. For example, a strength can be validation and test accuracies both being high, implying less overfitting. A weakness can be long training times and requirement of precise tuning.}
+% \subsection{Model 2: Whatever}
+% do the same thing as above
 
 \section{Overfitting and Generalization Analysis}
 \textbf{TODO: Describe the instances where your models overfit/underfit, by first stating which model it was, and elaborate on what caused it. Then discuss strategies you resorted to, to overcome that over/underfitting. You might find it useful to explain overfitting/underfitting using the validation/test accuracy discrepancies of the model stated above.}
@@ -409,6 +428,7 @@ do the same thing as above
 \subsubsection{Evidence of overfitting}
 The main evidence of overfitting in our model, was that we had a training accuracy of over 99\%, and a validation accuracy of 93 \% (our final submission accuracy was somewhat higher, but we achieved that by using a voting model across our different data splits). So, this is the main trait of overfitting, improved performance on training set, which did not improve the actual model performance.
 Likewise, when it came to the SVM, we had a higher training accuracy than the validation one. In order to prevent this, we added a hyperparameter to punish larger  weight values ($\lambda$).
+
 \subsubsection{What may have caused it}
 As we have learned in class, because neural networks have such exceptionally large number of weights to classify. Thus, as expected, it manages to reduce the training data error significantly, even though it does not translate into actual improvements in the accuracy.
 
@@ -422,6 +442,7 @@ We reduced overfitting by doing early stop, using weight decay (i.e. a ridge pen
 same argument.
 
 \section{Pipeline for the Final Submission}
+Our best and final submission is the ResNet CNN model. Here we describe the exact pipeline involved in the final submission. First, we preprocess the data as described in Section \ref{sec:cnn_preprocessing}.
 \textbf{TODO: Explain each process of an image's journey in the final submission pipeline, starting from its preprocessing up until how it's classified with a given label. HIGHLY RECOMMEND TO ADD A FLOWCHART OR A VISUAL DRAW.IO MODEL ETC HERE!}
 \subsection{Preprocessing of the image}
 \textbf{TODO: Briefly explain how a particular image is preprocessed in the final pipeline.}
