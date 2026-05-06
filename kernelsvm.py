@@ -1,52 +1,56 @@
 import os
 import time
+
 import numpy as np
 import pandas as pd
 from PIL import Image
+from sklearn.decomposition import PCA
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.decomposition import PCA
 from sklearn.svm import SVC
 from skimage.feature import hog
 from tqdm import tqdm
 
-DATA_DIR = os.getcwd() 
+# Configuration
+DATA_DIR = os.getcwd()
 TRAIN_IMG_DIR = os.path.join(DATA_DIR, "train_images")
 CSV_PATH = os.path.join(DATA_DIR, "train.csv")
 RANDOM_STATE = 42
-IMG_SIZE = 64 # resize to 64x64 for faster processing since kernel SVM is slow to train
+IMG_SIZE = 64
+VAL_SPLIT = 0.2
 
 def load_metadata(csv_path=CSV_PATH):
+    """Load training metadata from CSV."""
     df = pd.read_csv(csv_path)
     print(f"Loading {len(df)} entries, {df['TARGET'].nunique()} classes")
     return df
 
 def extract_features(filename, flip=False, img_dir=TRAIN_IMG_DIR):
-    # optional horizontal flip, extract HOG + color histogram features
+    """Extract HOG and color histogram features from an image."""
     path = os.path.join(img_dir, filename)
     img = Image.open(path).convert("RGB").resize((IMG_SIZE, IMG_SIZE))
     img = np.array(img)
-    
+
     if flip:
         img = np.fliplr(img)
-        
+
     hog_features = hog(img, orientations=8, pixels_per_cell=(8, 8),
                         cells_per_block=(2, 2), channel_axis=-1)
-                        
+
     hist_r, _ = np.histogram(img[:, :, 0], bins=32, range=(0, 256))
     hist_g, _ = np.histogram(img[:, :, 1], bins=32, range=(0, 256))
     hist_b, _ = np.histogram(img[:, :, 2], bins=32, range=(0, 256))
-    
+
     color_features = np.concatenate([hist_r, hist_g, hist_b])
     color_features = color_features / (color_features.sum() + 1e-7)
-    
+
     return np.concatenate([hog_features, color_features])
 
-# load test images and predict, output to csv
 def predict_test_images():
+    """Load test images and generate predictions."""
     test_img_dir = os.path.join(DATA_DIR, "test_images")
     test_files = sorted(os.listdir(test_img_dir))
-    
+
     predictions = []
     for filename in tqdm(test_files, total=len(test_files)):
         feat = extract_features(filename, flip=False, img_dir=test_img_dir)
@@ -56,8 +60,8 @@ def predict_test_images():
             pred_enc = svc.predict(feat_pca)[0]
             pred_label = enc.inverse_transform([pred_enc])[0]
             predictions.append((filename.removesuffix('.jpg'), pred_label))
-    
-    # save to CSV
+
+    # Save predictions to CSV
     pred_df = pd.DataFrame(predictions, columns=["ID", "TARGET"])
     print(pred_df.head())
     pred_df.to_csv("submission.csv", index=False)
@@ -67,16 +71,17 @@ def predict_test_images():
 if __name__ == "__main__":
     metadata = load_metadata()
 
-    enc = LabelEncoder() # encode target labels to integers for SVM
+    enc = LabelEncoder()
     metadata['TARGET_ENC'] = enc.fit_transform(metadata['TARGET'])
 
     train_df, test_df = train_test_split(
-        metadata, test_size=0.2, random_state=RANDOM_STATE, stratify=metadata['TARGET_ENC']
-    ) # 80/20 stratified split to maintain class distribution
-    print(f"Train set: {len(train_df)} original images, Test set: {len(test_df)} images")
+        metadata, test_size=VAL_SPLIT, random_state=RANDOM_STATE, stratify=metadata['TARGET_ENC']
+    )
+    print(f"Train set: {len(train_df)} images, Validation set: {len(test_df)} images")
 
+    # Extract training features (with augmentation)
     X_train, y_train = [], []
-    print("Extracting Train Features")
+    print("Extracting train features...")
     for idx, row in tqdm(train_df.iterrows(), total=len(train_df)):
         feat = extract_features(row["file_name"], flip=False, img_dir=TRAIN_IMG_DIR)
         if feat is not None:
@@ -88,38 +93,43 @@ if __name__ == "__main__":
             X_train.append(feat_flipped)
             y_train.append(row["TARGET_ENC"])
 
-    X_test, y_test = [], []
-    print("Extracting Test Features")
+    # Extract validation features
+    X_val, y_val = [], []
+    print("Extracting validation features...")
     for idx, row in tqdm(test_df.iterrows(), total=len(test_df)):
         feat = extract_features(row["file_name"], flip=False, img_dir=TRAIN_IMG_DIR)
         if feat is not None:
-            X_test.append(feat)
-            y_test.append(row["TARGET_ENC"])
+            X_val.append(feat)
+            y_val.append(row["TARGET_ENC"])
 
     X_train, y_train = np.array(X_train), np.array(y_train)
-    X_test, y_test = np.array(X_test), np.array(y_test)
-    print(f"Final Train samples after augmentation: {len(X_train)}")
+    X_val, y_val = np.array(X_val), np.array(y_val)
+    print(f"Train samples (with augmentation): {len(X_train)}, Validation samples: {len(X_val)}")
 
-    scaler = StandardScaler() # center and normalize data
+    # Normalize features
+    scaler = StandardScaler()
     X_train = scaler.fit_transform(X_train)
-    X_test = scaler.transform(X_test)
-    print('Features rescaled')
+    X_val = scaler.transform(X_val)
+    print("Features normalized")
 
-    # reduce dimensionality to make training faster
+    # Apply PCA for dimensionality reduction
     pca = PCA(n_components=0.95, random_state=RANDOM_STATE)
     X_train_pca = pca.fit_transform(X_train)
-    X_test_pca = pca.transform(X_test)
+    X_val_pca = pca.transform(X_val)
+    print(f"PCA: reduced from {X_train.shape[1]} to {X_train_pca.shape[1]} components")
 
-    print(f"PCA: reduced from {X_train.shape[1]} to {X_train_pca.shape[1]}")
-
-    # train with Gaussian kernel
+    # Train RBF SVM
     print("Training RBF SVM...")
     start_time = time.time()
     svc = SVC(kernel='rbf', cache_size=5000, random_state=RANDOM_STATE)
     svc.fit(X_train_pca, y_train)
-    print(f"Trained in {time.time() - start_time:.2f} seconds")
+    train_time = time.time() - start_time
+    print(f"Trained in {train_time:.2f} seconds")
 
-    test_acc = svc.score(X_test_pca, y_test)
-    print(f"Test Accuracy: {test_acc:.4f}")
+    # Evaluate on training and validation sets
+    train_acc = svc.score(X_train_pca, y_train)
+    val_acc = svc.score(X_val_pca, y_val)
+    print(f"Train Accuracy: {train_acc:.4f}")
+    print(f"Validation Accuracy: {val_acc:.4f}")
 
     predict_test_images()

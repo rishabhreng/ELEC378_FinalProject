@@ -1,4 +1,4 @@
-name: elec3781
+name: elec378
 channels:
   - defaults
   - conda-forge
