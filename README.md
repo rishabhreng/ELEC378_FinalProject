@@ -1,5 +1,5 @@
 # ELEC378 Final Project — Image Classification
-
+Note: We won the class competition! Achieved an accuracy of 0.99800.
 This repository contains the code, data references, notebooks, and results for our ELEC378 image classification final project.
 
 ## Repo layout
